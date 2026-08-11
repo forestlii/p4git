@@ -16,6 +16,10 @@ export class SettingsStore {
       return {
         ...defaults,
         ...parsed,
+        gitPath: typeof parsed.gitPath === 'string' ? parsed.gitPath : undefined,
+        diffToolPath: typeof parsed.diffToolPath === 'string' ? parsed.diffToolPath : undefined,
+        diffToolArguments: typeof parsed.diffToolArguments === 'string' ? parsed.diffToolArguments : undefined,
+        lastRepository: typeof parsed.lastRepository === 'string' ? parsed.lastRepository : undefined,
         recentRepositories: Array.isArray(parsed.recentRepositories)
           ? parsed.recentRepositories.filter((item): item is string => typeof item === 'string')
           : []

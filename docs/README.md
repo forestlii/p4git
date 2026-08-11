@@ -8,14 +8,17 @@ P4Git is a Windows desktop client that applies a P4V-style workspace and changel
 
 - [Installation and first run](getting-started.md) — choose a package, configure Git, and open the first workspace.
 - [User guide](user-guide.md) — changes, diffs, commits, history, branches, and remote synchronization.
+- [P4V-to-Git operation map](p4v-git-operation-map.md) — implemented mappings, non-equivalents, and Git-native candidates.
 - [Troubleshooting](troubleshooting.md) — Git discovery, credentials, pull failures, identity, and Windows warnings.
 
 ## Concepts
 
 | P4Git label | Git meaning |
 |---|---|
+| Depot | Committed file tree from the selected Git ref |
 | Workspace | Local Git working tree |
 | Default changelist | Unstaged and untracked working-tree changes |
+| Named changelist | Persistent local grouping stored under `.git/p4git`; not synchronized |
 | Ready to submit | Staged changes in the Git index |
 | Submit changes | Create a local Git commit |
 | Fetch | Download remote refs without modifying the working tree |
@@ -24,7 +27,7 @@ P4Git is a Windows desktop client that applies a P4V-style workspace and changel
 
 ## Current Scope
 
-P4Git 0.1 operates on existing repositories and delegates authentication, credential storage, hooks, filters, and network protocols to the selected Git executable. It deliberately does not implement clone, merge/rebase UI, a credential dialog, conflict editing, or untracked-file deletion yet.
+P4Git 0.1 operates on existing repositories and delegates authentication, credential storage, hooks, filters, and network protocols to the selected Git executable. It deliberately does not implement clone, a credential dialog, conflict editing, or untracked-file deletion yet.
 
 ## Source Layout
 

@@ -54,10 +54,10 @@ If Git is not found, select **Choose git.exe** and browse to a compatible execut
 
 ## Create the First Commit
 
-1. Open **Pending** and select a file under **Default changelist**.
-2. Choose **Checkout** for a modified file or **Add** for an untracked file. You can also drag files to **Ready to submit**.
+1. Open **Pending**. Optionally choose **New Changelist...** and create a list for the task.
+2. Drag files into that list or use **Move to Changelist** in the file context menu.
 3. Double-click a file or choose **Diff** to review it in the bottom Diff Summary pane.
-4. Choose **Submit**, enter a description in the Submit Changelist window, and submit.
+4. Right-click the list and choose **Submit Changelist**. Review the exact files, enter a description, and submit.
 
 This creates a local Git commit. It does not automatically push. Use **Connection > Push** when you are ready to publish the commit to the remote.
 

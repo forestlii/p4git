@@ -245,6 +245,15 @@ textarea:focus-visible {
   text-overflow: ellipsis;
 }
 
+.depot-selector select {
+  min-width: 0;
+  flex: 1;
+  height: 21px;
+  border: 1px solid #9ea4a8;
+  background: white;
+  font: inherit;
+}
+
 .tree-scroll {
   overflow: auto;
   padding-top: 2px;
@@ -422,9 +431,85 @@ textarea:focus-visible {
   grid-template-columns: 140px minmax(190px, 1fr) 90px minmax(220px, 1.2fr);
 }
 
+.pending-layout {
+  min-width: 640px;
+}
+
+.pending-tools {
+  display: flex;
+  height: 31px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 7px;
+  border-bottom: 1px solid #bbb;
+  background: #f4f4f4;
+}
+
+.pending-tools button {
+  display: inline-flex;
+  height: 23px;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #999;
+  background: linear-gradient(#fff, #e5e5e5);
+}
+
+.pending-tools span {
+  overflow: hidden;
+  color: #68747b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .submitted-table .table-head,
 .submitted-table .table-row {
   grid-template-columns: 105px 200px 140px minmax(260px, 1fr);
+}
+
+.history-layout {
+  min-width: 760px;
+}
+
+.history-path {
+  display: flex;
+  height: 31px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #aaa;
+  background: #f4f4f4;
+}
+
+.history-path > span {
+  overflow: hidden;
+  color: #48545c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-path > em {
+  margin-left: auto;
+  color: #78838a;
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.history-table .table-head,
+.history-table .table-row {
+  min-width: 800px;
+  grid-template-columns: 85px 90px 190px 140px minmax(260px, 1fr);
+}
+
+.history-revision {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.history-revision i {
+  color: #24afd4;
+  font-style: normal;
 }
 
 .stream-table .table-head,
@@ -484,6 +569,16 @@ textarea:focus-visible {
 .group-row span {
   margin-left: auto;
   color: #666;
+}
+
+.group-row em {
+  overflow: hidden;
+  max-width: 45%;
+  color: #7a858b;
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-table {
@@ -611,6 +706,21 @@ textarea:focus-visible {
   color: #666;
 }
 
+.revision-files {
+  overflow: auto;
+  padding: 3px 0;
+  background: white;
+}
+
+.revision-files > div {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 10px;
+  border-bottom: 1px solid #eee;
+}
+
 .log-pane {
   display: grid;
   min-height: 0;
@@ -695,6 +805,11 @@ textarea:focus-visible {
 }
 
 .submit-dialog,
+.history-dialog,
+.timelapse-dialog,
+.git-list-dialog,
+.changelist-dialog,
+.preferences-dialog,
 .connection-dialog {
   border: 1px solid #777;
   background: #f1f1f1;
@@ -703,6 +818,190 @@ textarea:focus-visible {
 
 .submit-dialog {
   width: min(650px, calc(100vw - 70px));
+}
+
+.changelist-dialog {
+  width: min(560px, calc(100vw - 70px));
+}
+
+.preferences-dialog {
+  width: min(720px, calc(100vw - 70px));
+}
+
+.preferences-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #f7f7f7;
+}
+
+.preferences-body fieldset {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #aaa;
+}
+
+.preferences-body legend {
+  padding: 0 5px;
+  font-weight: 700;
+}
+
+.preference-path {
+  display: flex;
+  gap: 6px;
+}
+
+.preference-path input {
+  min-width: 0;
+  flex: 1;
+  height: 24px;
+  padding: 2px 6px;
+  border: 1px solid #999;
+  background: white;
+}
+
+.preferences-body textarea {
+  min-height: 62px;
+  resize: vertical;
+  border: 1px solid #999;
+  padding: 5px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+
+.preferences-body p {
+  margin: 0;
+  color: #67747c;
+  font-size: 11px;
+}
+
+.preferences-body .preference-error {
+  color: #b42731;
+}
+
+.history-dialog,
+.timelapse-dialog,
+.git-list-dialog {
+  width: min(960px, calc(100vw - 70px));
+}
+
+.history-dialog .history-table {
+  height: min(480px, calc(100vh - 180px));
+  overflow: auto;
+  background: white;
+}
+
+.timelapse-lines {
+  height: min(560px, calc(100vh - 170px));
+  overflow: auto;
+  background: white;
+  font-size: 11px;
+}
+
+.timelapse-head,
+.timelapse-row {
+  display: grid;
+  min-width: 850px;
+  grid-template-columns: 82px 140px 90px 48px minmax(470px, 1fr);
+  align-items: center;
+}
+
+.timelapse-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: 22px;
+  border-bottom: 1px solid #aaa;
+  background: linear-gradient(#f9f9f9, #e3e3e3);
+  color: #57626a;
+}
+
+.timelapse-head > span,
+.timelapse-row > * {
+  overflow: hidden;
+  padding: 2px 6px;
+  border-right: 1px solid #eee;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelapse-row {
+  min-height: 20px;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.timelapse-row:hover {
+  background: #eef6fa;
+}
+
+.timelapse-row > code:last-child {
+  font-family: Consolas, monospace;
+}
+
+.git-list-table {
+  height: min(500px, calc(100vh - 180px));
+  overflow: auto;
+  background: white;
+  font-size: 12px;
+}
+
+.git-list-head,
+.git-list-row {
+  display: grid;
+  min-width: 820px;
+  align-items: center;
+}
+
+.stash-list .git-list-head,
+.stash-list .git-list-row {
+  grid-template-columns: 100px 190px minmax(300px, 1fr) 185px;
+}
+
+.reflog-list .git-list-head,
+.reflog-list .git-list-row {
+  grid-template-columns: 105px 90px 190px minmax(300px, 1fr) 90px;
+}
+
+.git-list-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: 22px;
+  border-bottom: 1px solid #aaa;
+  background: linear-gradient(#f9f9f9, #e3e3e3);
+  color: #57626a;
+}
+
+.git-list-row {
+  min-height: 27px;
+  border-bottom: 1px solid #eee;
+}
+
+.git-list-row:hover {
+  background: #eef6fa;
+}
+
+.git-list-head > span,
+.git-list-row > span,
+.git-list-row > code {
+  overflow: hidden;
+  padding: 3px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.row-actions button {
+  height: 21px;
+  padding: 0 7px;
+  border: 1px solid #999;
+  background: linear-gradient(#fff, #e5e5e5);
 }
 
 .modal-title,
@@ -757,6 +1056,14 @@ textarea:focus-visible {
   background: white;
 }
 
+.changelist-dialog .modal-body > input {
+  width: 100%;
+  height: 25px;
+  border: 1px solid #888;
+  padding: 3px 6px;
+  background: white;
+}
+
 .submit-files-title {
   display: flex;
   margin-top: 3px;
@@ -806,6 +1113,13 @@ textarea:focus-visible {
   padding: 8px 10px;
   border-top: 1px solid #bbb;
   background: #e8e8e8;
+}
+
+.modal-hint {
+  flex: 1;
+  align-self: center;
+  color: #666;
+  text-align: left;
 }
 
 .modal-actions button,

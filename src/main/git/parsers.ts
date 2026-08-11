@@ -1,4 +1,4 @@
-import type { BranchInfo, ChangeKind, CommitInfo, FileChange } from '../../shared/types'
+import type { BlameLine, BranchInfo, ChangeKind, CommitInfo, FileChange, ReflogEntry, RevisionFile, StashEntry } from '../../shared/types'
 
 function kindFromCode(code: string): ChangeKind {
   if (code.includes('U') || code === 'AA' || code === 'DD') return 'conflicted'
@@ -99,5 +99,69 @@ export function parseBranches(output: string): BranchInfo[] {
         hash,
         subject
       }
+    })
+}
+
+export function parseBlame(output: string): BlameLine[] {
+  const result: BlameLine[] = []
+  let hash = ''
+  let lineNumber = 0
+  let author = ''
+  let date = ''
+  for (const line of output.split(/\r?\n/)) {
+    const header = line.match(/^([0-9a-f^]{40}) \d+ (\d+)(?: \d+)?$/)
+    if (header) {
+      hash = header[1].replace(/^\^/, '')
+      lineNumber = Number(header[2])
+      author = ''
+      date = ''
+    } else if (line.startsWith('author ')) {
+      author = line.slice(7)
+    } else if (line.startsWith('author-time ')) {
+      const seconds = Number(line.slice(12))
+      date = Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : ''
+    } else if (line.startsWith('\t')) {
+      result.push({ hash, author, date, lineNumber, content: line.slice(1) })
+    }
+  }
+  return result
+}
+
+export function parseRevisionFiles(output: string): RevisionFile[] {
+  const tokens = output.split('\0').filter(Boolean)
+  const files: RevisionFile[] = []
+  for (let index = 0; index < tokens.length;) {
+    const kind = tokens[index++]
+    const firstPath = tokens[index++]
+    if (!firstPath) break
+    if (kind.startsWith('R') || kind.startsWith('C')) {
+      const nextPath = tokens[index++]
+      if (nextPath) files.push({ kind: kind[0], path: `${firstPath} → ${nextPath}` })
+    } else {
+      files.push({ kind: kind[0], path: firstPath })
+    }
+  }
+  return files
+}
+
+export function parseStashes(output: string): StashEntry[] {
+  return output
+    .split('\x1e')
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .map((record) => {
+      const [ref, hash, date, subject] = record.split('\x1f')
+      return { ref, hash, date, subject }
+    })
+}
+
+export function parseReflog(output: string): ReflogEntry[] {
+  return output
+    .split('\x1e')
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .map((record) => {
+      const [hash, shortHash, selector, date, subject] = record.split('\x1f')
+      return { hash, shortHash, selector, date, subject }
     })
 }

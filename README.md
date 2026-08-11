@@ -8,16 +8,19 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.3-0c8b87)
 
 ## Highlights
 
 | Area | What P4Git provides |
 |---|---|
 | P4V layout | Native menu, large action toolbar, Workspace tree, tabbed tables, details, Log, and status bar |
+| Depot | Browse the committed tree of an upstream, HEAD, local branch, or remote branch |
 | Workspace | Browse an existing Git repository as a collapsible workspace tree and return to recent workspaces |
-| Changelists | Use **Default changelist** and **Ready to submit**, including drag-and-drop between them |
+| Changelists | Create persistent local named changelists, multi-select and move files between them, and submit one list at a time |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
+| History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
+| External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
 | Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
 | Submitted | Browse recent Git commits in a P4V-style submitted changes table |
 | Stream Graph | Inspect local and remote Git branches, create a branch, or switch local branches |
@@ -40,8 +43,8 @@ The current binaries are not code-signed. Windows may show an **Unknown publishe
 1. Install P4Git or run the portable executable.
 2. Confirm that P4Git finds Git. If it does not, choose a Git for Windows or UGit `git.exe`.
 3. Select **Open Git workspace** and choose an existing repository.
-4. Open **Pending**. Use **Checkout** for modified files or **Add** for untracked files, or drag files into **Ready to submit**.
-5. Choose **Submit**, enter a description in the Submit Changelist window, and submit the local Git commit.
+4. Open **Pending**. Create named changelists as needed, then drag files or use their context menu to organize the work.
+5. Right-click a changelist and choose **Submit Changelist**, or move files to **Ready to submit** and choose **Submit**.
 6. Use **Get Latest** and the **Connection** menu to pull, fetch, or push.
 
 ## Documentation
@@ -50,6 +53,7 @@ Full documentation lives in [docs/](docs/README.md):
 
 - [Installation and first run](docs/getting-started.md)
 - [User guide](docs/user-guide.md)
+- [P4V-to-Git operation map](docs/p4v-git-operation-map.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## Requirements
@@ -85,7 +89,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.1.0** is an initial Windows-first release. Clone UI, credential prompts, conflict resolution, partial-hunk staging, Git LFS locks, and GitLab merge request integration are planned rather than implemented.
+Version **0.1.3** is a Windows-first release. Clone UI, credential prompts, visual conflict resolution, partial-hunk staging, Git LFS locks, and GitLab merge request integration remain planned. Stash, Reflog, Merge, Rebase, Cherry-pick, Reset, and Tag are grouped under **Tools > Git** and contextual **Git** submenus.
 
 ## License
 

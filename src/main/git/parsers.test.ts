@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseBranches, parseLog, parsePorcelainV2 } from './parsers'
+import { parseBlame, parseBranches, parseLog, parsePorcelainV2, parseReflog, parseRevisionFiles, parseStashes } from './parsers'
 
 describe('parsePorcelainV2', () => {
   it('parses staged, unstaged, untracked, renamed, and conflicted files', () => {
@@ -101,5 +101,62 @@ describe('parseBranches', () => {
         subject: 'Latest'
       }
     ])
+  })
+})
+
+describe('parseBlame', () => {
+  it('maps porcelain metadata to individual source lines', () => {
+    const hash = '0123456789abcdef0123456789abcdef01234567'
+    const output = [
+      `${hash} 1 7 1`,
+      'author Alice',
+      'author-time 1786413600',
+      '\tconst answer = 42',
+      ''
+    ].join('\n')
+
+    expect(parseBlame(output)).toEqual([{
+      hash,
+      author: 'Alice',
+      date: '2026-08-11T02:00:00.000Z',
+      lineNumber: 7,
+      content: 'const answer = 42'
+    }])
+  })
+})
+
+describe('parseRevisionFiles', () => {
+  it('parses ordinary changes and rename pairs from nul-separated output', () => {
+    const output = ['M', 'src/app.ts', 'A', 'README.md', 'R100', 'old.ts', 'new.ts', ''].join('\0')
+    expect(parseRevisionFiles(output)).toEqual([
+      { kind: 'M', path: 'src/app.ts' },
+      { kind: 'A', path: 'README.md' },
+      { kind: 'R', path: 'old.ts → new.ts' }
+    ])
+  })
+})
+
+describe('parseStashes', () => {
+  it('parses stash refs and subjects', () => {
+    const output = 'stash@{0}\x1f012345\x1f2026-08-11T12:00:00+08:00\x1fOn main: work in progress\x1e'
+    expect(parseStashes(output)).toEqual([{
+      ref: 'stash@{0}',
+      hash: '012345',
+      date: '2026-08-11T12:00:00+08:00',
+      subject: 'On main: work in progress'
+    }])
+  })
+})
+
+describe('parseReflog', () => {
+  it('parses reflog selectors and operations', () => {
+    const output = '0123456789\x1f0123456\x1fHEAD@{0}\x1f2026-08-11T12:00:00+08:00\x1fcommit: feature\x1e'
+    expect(parseReflog(output)).toEqual([{
+      hash: '0123456789',
+      shortHash: '0123456',
+      selector: 'HEAD@{0}',
+      date: '2026-08-11T12:00:00+08:00',
+      subject: 'commit: feature'
+    }])
   })
 })

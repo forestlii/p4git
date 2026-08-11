@@ -8,16 +8,19 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.3-0c8b87)
 
 ## 核心能力
 
 | 模块 | P4Git 提供什么 |
 |---|---|
 | P4V 布局 | 原生菜单、大图标操作栏、Workspace 树、页签表格、详情、Log 与状态栏 |
+| Depot | 浏览所选 upstream、HEAD、本地或远程分支的已提交文件树 |
 | 工作区 | 以可展开的 Workspace 树浏览已有 Git 仓库，并快速返回最近使用的工作区 |
-| 变更列表 | 使用 **Default changelist** 与 **Ready to submit**，并可在两者之间拖拽文件 |
+| 变更列表 | 创建可持久保存的本地命名 Changelist，多选并通过拖拽或右键批量归组文件，并一次只提交一个列表 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
+| History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
+| 外部 Diff | 配置 Beyond Compare 或其他可执行程序；文件比较会自动优先使用，并保留内置回退 |
 | 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
 | Submitted | 在 P4V 风格的已提交变更表格中浏览 Git 历史 |
 | Stream Graph | 查看本地和远程 Git 分支，新建分支或切换本地分支 |
@@ -40,8 +43,8 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 1. 安装 P4Git，或者直接运行便携版。
 2. 确认 P4Git 找到了 Git；如果没有，请选择 Git for Windows 或 UGit 使用的 `git.exe`。
 3. 点击 **打开 Git 工作区**，选择已有本地仓库。
-4. 打开 **Pending**；修改文件使用 **Checkout**，未跟踪文件使用 **Add**，也可以直接拖到 **Ready to submit**。
-5. 点击 **Submit**，在 Submit Changelist 窗口填写说明并创建本地 Git 提交。
+4. 打开 **Pending**；按任务创建命名 Changelist，通过拖拽或文件右键菜单整理改动。
+5. 右键目标列表选择 **Submit Changelist**，或把文件移到 **Ready to submit** 后点击 **Submit**。
 6. 使用 **Get Latest** 和 **Connection** 菜单执行 Pull、Fetch 或 Push。
 
 ## 文档
@@ -50,6 +53,7 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 
 - [安装与首次运行](docs/getting-started.zh-CN.md)
 - [使用指南](docs/user-guide.zh-CN.md)
+- [P4V 与 Git 操作映射](docs/p4v-git-operation-map.zh-CN.md)
 - [故障排查](docs/troubleshooting.zh-CN.md)
 
 ## 环境要求
@@ -85,7 +89,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.1.0** 是以 Windows 为首要平台的初始版本。仓库克隆、凭据交互、冲突解决、按区块暂存、Git LFS 锁和 GitLab Merge Request 集成仍在规划中。
+版本 **0.1.3** 是以 Windows 为首要平台的版本。仓库克隆、凭据交互、可视化冲突解决、按区块暂存、Git LFS 锁和 GitLab Merge Request 集成仍在规划中。Stash、Reflog、Merge、Rebase、Cherry-pick、Reset 与 Tag 已集中到 **Tools > Git** 和对象右键 **Git** 子菜单。
 
 ## 协议
 
