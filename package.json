@@ -13,7 +13,7 @@
     "test": "vitest run",
     "build": "npm run typecheck && npm run test && electron-vite build",
     "pack": "npm run build && electron-builder --dir",
-    "dist:win": "npm run build && electron-builder --win nsis portable"
+    "dist:win": "npm run build && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
