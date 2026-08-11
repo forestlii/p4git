@@ -2,95 +2,101 @@
 
 # User Guide
 
-## Application Layout
+## P4V-Style Layout
 
-- **Header** — current repository, branch, ahead/behind counts, Fetch, Pull, Push, refresh, Explorer, and Git settings.
-- **Left navigation** — changelists, commit history, and branches.
-- **Changes view** — file lists on the left, diff in the center, and commit controls on the right.
-- **Status bar** — Git readiness, upstream branch, and workspace cleanliness.
+P4Git deliberately follows the P4V desktop structure instead of a conventional Git-client dashboard:
 
-## Changelists and File Status
+- **Native menu** — File, Edit, Search, View, Actions, Connection, Tools, Window, and Help.
+- **Action toolbar** — Refresh, Get Latest, Submit, Checkout, Add, Delete, Revert, Diff, Timelapse, Revgraph, and Cancel.
+- **Location bar** — the validated Git repository root and selected workspace directory.
+- **Workspace pane** — a collapsible folder tree on the left, under the Depot/Workspace tabs.
+- **Main tabs** — Files, Pending, Submitted, Stream Graph, and Workspaces.
+- **Details pane** — Details, Files, Jobs, and Diff Summary below the main table.
+- **Log and status bar** — executed operations, results, current path, upstream, and readiness.
 
-P4Git maps the Git index to a P4V-like changelist model:
+Timelapse and Cancel are visible for layout and workflow continuity but are disabled in 0.1. Revgraph opens the Git branch view in **Stream Graph**.
 
-- **Default changelist** contains unstaged and untracked changes from the working tree.
+## Git Mapping
+
+P4Git keeps P4V action names while using Git underneath:
+
+| P4Git / P4V action | Git operation |
+|---|---|
+| Refresh | Re-read `git status`, history, branches, and the current directory |
+| Get Latest | `git pull --ff-only` |
+| Checkout | Stage a selected tracked modification with `git add` |
+| Add | Stage a selected untracked file with `git add` |
+| Delete | Stage a deletion already detected by Git |
+| Revert | Restore an unstaged tracked file after confirmation |
+| Submit | Create a local Git commit from Ready to submit |
+| Connection > Fetch | `git fetch --all --prune` |
+| Connection > Push | Push the current branch and create its upstream when needed |
+
+**Checkout does not lock a file and does not run `git checkout`.** Git allows normal editing without opening a file first; in P4Git the action means “include this tracked edit in the next submit.”
+
+## Workspace and Files
+
+Expand folders in the left **Workspace** tree and select a folder to display its children in **Files**. Double-click a folder to open it. A file that has a Git change shows its action in the table; double-clicking that changed file opens its diff.
+
+The location bar and bottom status bar always show which local directory is being viewed. The `.git` administration directory is never exposed in the tree.
+
+## Pending Changelists
+
+P4Git maps the Git index to two P4V-style changelists:
+
+- **Default changelist** contains unstaged and untracked working-tree changes.
 - **Ready to submit** contains staged changes from the Git index.
 
-A file can appear in both groups when part of it is staged and the working copy has additional changes. Status badges use `M` (modified), `A` (added), `D` (deleted), `R` (renamed), `C` (copied), `?` (untracked), and `!` (conflicted).
+A partially staged file can appear in both groups because the staged and working-tree versions have different diffs. Status marks are `M` (modified), `A` (added), `D` (deleted), `R` (renamed), `C` (copied), `?` (untracked), and `!` (conflicted).
 
-### Stage Changes
+There are two ways to move a file to **Ready to submit**:
 
-- **Stage selected** adds the selected path to the index.
-- **Stage all** adds every path currently shown in the Default changelist.
-- Renames include both the old and new paths so the deletion and addition stay together.
+1. Select it and use **Checkout**, **Add**, or **Delete**, according to its action.
+2. Drag it from **Default changelist** onto **Ready to submit**.
 
-### Unstage Changes
+To remove a file from the next submit without discarding its content, drag it from **Ready to submit** back to **Default changelist**. This unstages the Git index entry.
 
-Select a file under Ready to submit and choose **Unstage**. The content remains in the working tree; only the index entry changes.
+## Diff and Revert
 
-### Discard Changes
+Double-click a pending file or select it and choose **Diff**. The matching staged or unstaged diff appears under **Diff Summary**. Untracked text files appear as all-new content; binary files and untracked files over 2 MB are not previewed.
 
-For a tracked, unstaged file, **Discard changes** restores the working-tree content from the index after confirmation. This cannot be undone by P4Git.
+For an unstaged tracked file, **Revert** restores the working-tree content after confirmation. P4Git cannot undo this operation. Revert is unavailable for untracked files, so P4Git never deletes them implicitly.
 
-P4Git never offers this command for untracked files. Delete or move those files outside P4Git when appropriate.
+## Submit Changelist
 
-## Diff Review
+1. Move the intended files into **Ready to submit**.
+2. Choose **Submit** from the toolbar or Actions menu.
+3. Review the complete file list in the Submit Changelist window.
+4. Enter a non-empty description and select **Submit**.
 
-Selecting a file opens the corresponding staged or working-tree diff. Additions, deletions, hunk headers, and metadata use distinct colors.
+Conflicted files disable submission. The result is a local Git commit; it is not pushed automatically. Git hooks and repository commit policies still run because P4Git invokes the configured Git executable.
 
-- Untracked text files are displayed as additions.
-- Binary untracked files are not previewed.
-- Untracked files over 2 MB are not previewed.
-- The renderer displays at most 6,000 diff lines to protect responsiveness.
+## Submitted
 
-## Commit Changes
+The **Submitted** table shows up to 100 recent Git commits using P4V-style columns: Change, Date Submitted, Submitted By, and Description. Selecting a row displays its full hash, author, date, and subject in **Details**.
 
-1. Stage the exact files to include.
-2. Resolve all conflicted files; P4Git disables commit while a conflict is reported.
-3. Enter a non-empty message.
-4. Select **Commit**.
+Per-commit file lists, cherry-pick, reset, and interactive rebase are not included in 0.1.
 
-Git hooks and configured commit policies still run because P4Git calls the real Git executable. A hook failure is shown as an error and the commit is not reported as successful.
+## Stream Graph
+
+**Stream Graph** maps Git branches into the P4V navigation position. It lists local and remote branches, marks the current branch, creates a local branch from `HEAD`, and switches between existing local branches. Remote branches are read-only in 0.1.
+
+Git blocks a switch that would overwrite local changes; P4Git displays that error and never forces the operation.
+
+## Workspaces
+
+The **Workspaces** tab lists the last workspace and up to eight recent repositories. Double-click a row to open it. Use **File > Open Workspace** to browse for another existing Git repository.
+
+Use **Tools > Git Settings** to select Git for Windows or the `git.exe` bundled with UGit. P4Git verifies the executable with `git --version` before saving it.
 
 ## Remote Synchronization
 
-### Fetch
+- **Get Latest** uses fast-forward-only pull. If local and remote histories diverge, choose an appropriate merge or rebase outside P4Git 0.1.
+- **Connection > Fetch** updates remote-tracking refs without changing local files.
+- **Connection > Push** runs a normal push, or pushes to `origin` and sets upstream for a new local branch.
 
-**Fetch** runs `git fetch --all --prune`. It downloads remote refs and removes stale remote-tracking refs without changing local files.
-
-### Pull
-
-**Pull** runs `git pull --ff-only`. It succeeds only when Git can fast-forward the current branch. If local and remote histories diverged, choose and perform the appropriate merge or rebase outside P4Git 0.1.
-
-### Push
-
-When an upstream exists, **Push** runs a normal `git push`. On a new local branch without an upstream, P4Git pushes to `origin` and configures that branch as the upstream.
-
-P4Git disables terminal prompts. HTTPS credentials must already be available through Git Credential Manager, and SSH authentication must already work through the configured key/agent.
-
-## History
-
-The History view shows up to 100 recent commits with subject, author, relative time, short hash, and decorations such as `HEAD`, local branches, and remote refs.
-
-Version 0.1 does not yet include a per-commit file diff or actions such as revert, cherry-pick, reset, and interactive rebase.
-
-## Branches
-
-- Local and remote branches are listed separately.
-- The current local branch is highlighted.
-- Enter a valid name to create a local branch from the current `HEAD` and switch to it.
-- Switch directly between existing local branches.
-
-Remote branches are currently read-only in the interface. Create a tracking branch with Git before opening it in P4Git, or create the desired local branch in the Branches view.
-
-Git prevents a branch switch when local changes would be overwritten; P4Git shows the Git error instead of forcing the operation.
-
-## Workspaces and Settings
-
-P4Git remembers the last workspace and up to eight recent repositories. Selecting a different `git.exe` updates the application setting for future launches.
-
-Use the Explorer button in the header to open the validated repository root in Windows Explorer.
+Terminal prompts are disabled. HTTPS credentials must already be available through Git Credential Manager, and SSH authentication must already work through the configured key or agent.
 
 ## Operations Deliberately Not Automated
 
-P4Git 0.1 does not silently merge, rebase, delete untracked files, discard staged content, resolve conflicts, or bypass Git hooks. These operations require more context than the initial client can safely infer.
+P4Git 0.1 does not silently merge, rebase, delete untracked files, discard staged content, resolve conflicts, bypass Git hooks, or emulate Perforce file locking. These operations require context that the client should not guess.

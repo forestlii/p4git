@@ -54,13 +54,12 @@ P4Git 启动时会依次检查：
 
 ## 创建第一次提交
 
-1. 在 **Default changelist** 下选择文件并审阅差异。
-2. 点击 **暂存所选**；确认全部改动后也可以使用 **暂存全部**。
-3. 确认目标文件已经进入 **Ready to submit**。
-4. 在右侧面板填写提交说明。
-5. 点击 **提交**。
+1. 打开 **Pending**，在 **Default changelist** 下选择文件。
+2. 修改文件点击 **Checkout**，未跟踪文件点击 **Add**；也可以把文件拖到 **Ready to submit**。
+3. 双击文件或点击 **Diff**，在底部 Diff Summary 面板审阅差异。
+4. 点击 **Submit**，在 Submit Changelist 窗口填写说明并提交。
 
-这一步只创建本地 Git commit，不会自动 Push。确认需要发布到远程后，再点击 **Push**。
+这一步只创建本地 Git commit，不会自动 Push。确认需要发布到远程后，使用 **Connection > Push**。
 
 ## 下一步
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CheckoutRequest, DiffRequest, P4GitApi } from '../shared/types'
+import type { CheckoutRequest, DiffRequest, MenuAction, P4GitApi } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -19,11 +19,18 @@ const api: P4GitApi = {
   getHistory: (repoPath: string, limit?: number) =>
     ipcRenderer.invoke('git:history', repoPath, limit),
   getBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),
+  listDirectory: (repoPath: string, relativePath = '') =>
+    ipcRenderer.invoke('git:list-directory', repoPath, relativePath),
   checkout: (request: CheckoutRequest) => ipcRenderer.invoke('git:checkout', request),
   fetch: (repoPath: string) => ipcRenderer.invoke('git:fetch', repoPath),
   pull: (repoPath: string) => ipcRenderer.invoke('git:pull', repoPath),
   push: (repoPath: string) => ipcRenderer.invoke('git:push', repoPath),
-  revealRepository: (repoPath: string) => ipcRenderer.invoke('shell:reveal-repository', repoPath)
+  revealRepository: (repoPath: string) => ipcRenderer.invoke('shell:reveal-repository', repoPath),
+  onMenuAction: (callback: (action: MenuAction) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: MenuAction): void => callback(action)
+    ipcRenderer.on('menu:action', listener)
+    return () => ipcRenderer.removeListener('menu:action', listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('p4git', api)

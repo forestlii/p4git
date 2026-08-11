@@ -14,12 +14,13 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 
 | 模块 | P4Git 提供什么 |
 |---|---|
-| 工作区 | 打开任意已有 Git 仓库，并快速返回最近使用的工作区 |
-| 变更列表 | 将 **Ready to submit**（已暂存）与 **Default changelist**（工作区）明确分开 |
+| P4V 布局 | 原生菜单、大图标操作栏、Workspace 树、页签表格、详情、Log 与状态栏 |
+| 工作区 | 以可展开的 Workspace 树浏览已有 Git 仓库，并快速返回最近使用的工作区 |
+| 变更列表 | 使用 **Default changelist** 与 **Ready to submit**，并可在两者之间拖拽文件 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
-| 提交 | 暂存、取消暂存、暂存全部，检查说明并创建本地提交 |
-| 历史 | 浏览最近提交、作者、引用和哈希 |
-| 分支 | 查看本地和远程分支，新建分支或切换本地分支 |
+| 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
+| Submitted | 在 P4V 风格的已提交变更表格中浏览 Git 历史 |
+| Stream Graph | 查看本地和远程 Git 分支，新建分支或切换本地分支 |
 | 同步 | Fetch、仅快进 Pull，以及自动设置 upstream 的 Push |
 | Git 发现 | 自动查找 Git for Windows，也可选择 UGit 等客户端自带的 `git.exe` |
 
@@ -39,8 +40,9 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 1. 安装 P4Git，或者直接运行便携版。
 2. 确认 P4Git 找到了 Git；如果没有，请选择 Git for Windows 或 UGit 使用的 `git.exe`。
 3. 点击 **打开 Git 工作区**，选择已有本地仓库。
-4. 在 **Default changelist** 审阅文件，将需要提交的文件暂存，填写说明并提交。
-5. 使用 **Fetch**、**Pull**、**Push** 与已配置的远程仓库同步。
+4. 打开 **Pending**；修改文件使用 **Checkout**，未跟踪文件使用 **Add**，也可以直接拖到 **Ready to submit**。
+5. 点击 **Submit**，在 Submit Changelist 窗口填写说明并创建本地 Git 提交。
+6. 使用 **Get Latest** 和 **Connection** 菜单执行 Pull、Fetch 或 Push。
 
 ## 文档
 

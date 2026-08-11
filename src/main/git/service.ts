@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import { basename, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type {
@@ -7,7 +7,8 @@ import type {
   CommitInfo,
   DiffRequest,
   GitHealth,
-  RepositorySummary
+  RepositorySummary,
+  WorkspaceEntry
 } from '../../shared/types'
 import { SettingsStore } from '../settings'
 import { parseBranches, parseLog, parsePorcelainV2 } from './parsers'
@@ -176,6 +177,28 @@ export class GitService {
       'refs/remotes'
     ])
     return parseBranches(output).filter((branch) => !branch.name.endsWith('/HEAD'))
+  }
+
+  async listDirectory(repoPath: string, relativePath = ''): Promise<WorkspaceEntry[]> {
+    const root = await this.repositoryRoot(repoPath)
+    const requested = resolve(root, relativePath || '.')
+    const fromRoot = relative(root, requested)
+    if (fromRoot.startsWith('..') || isAbsolute(fromRoot)) {
+      throw new Error('目录不在当前仓库中。')
+    }
+
+    const entries = await readdir(requested, { withFileTypes: true })
+    return entries
+      .filter((entry) => entry.name !== '.git' && (entry.isDirectory() || entry.isFile()))
+      .map((entry) => ({
+        name: entry.name,
+        path: join(fromRoot, entry.name).replaceAll('\\', '/'),
+        isDirectory: entry.isDirectory()
+      }))
+      .sort((left, right) => {
+        if (left.isDirectory !== right.isDirectory) return left.isDirectory ? -1 : 1
+        return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+      })
   }
 
   async checkout(repoPath: string, branch: string, create = false): Promise<void> {

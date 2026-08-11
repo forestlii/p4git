@@ -14,12 +14,13 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 
 | Area | What P4Git provides |
 |---|---|
-| Workspace | Open any existing Git repository and quickly return to recent workspaces |
-| Changelists | Separate **Ready to submit** (staged) files from the **Default changelist** (working tree) |
+| P4V layout | Native menu, large action toolbar, Workspace tree, tabbed tables, details, Log, and status bar |
+| Workspace | Browse an existing Git repository as a collapsible workspace tree and return to recent workspaces |
+| Changelists | Use **Default changelist** and **Ready to submit**, including drag-and-drop between them |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
-| Submit | Stage, unstage, stage all, review a message, and create a local commit |
-| History | Browse recent commits, authors, refs, and hashes |
-| Branches | Inspect local and remote branches, create a branch, or switch local branches |
+| Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
+| Submitted | Browse recent Git commits in a P4V-style submitted changes table |
+| Stream Graph | Inspect local and remote Git branches, create a branch, or switch local branches |
 | Sync | Fetch, fast-forward-only pull, and push with automatic upstream setup |
 | Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |
 
@@ -39,8 +40,9 @@ The current binaries are not code-signed. Windows may show an **Unknown publishe
 1. Install P4Git or run the portable executable.
 2. Confirm that P4Git finds Git. If it does not, choose a Git for Windows or UGit `git.exe`.
 3. Select **Open Git workspace** and choose an existing repository.
-4. Review files in the **Default changelist**, stage the intended files, enter a message, and commit.
-5. Use **Fetch**, **Pull**, and **Push** to synchronize with the configured remote.
+4. Open **Pending**. Use **Checkout** for modified files or **Add** for untracked files, or drag files into **Ready to submit**.
+5. Choose **Submit**, enter a description in the Submit Changelist window, and submit the local Git commit.
+6. Use **Get Latest** and the **Connection** menu to pull, fetch, or push.
 
 ## Documentation
 

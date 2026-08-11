@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import type { OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import type { MenuItemConstructorOptions, OpenDialogOptions } from 'electron'
 import { join } from 'node:path'
-import type { CheckoutRequest, DiffRequest } from '../shared/types'
+import type { CheckoutRequest, DiffRequest, MenuAction } from '../shared/types'
 import { GitService } from './git/service'
 import { SettingsStore } from './settings'
 
@@ -15,7 +15,7 @@ function createWindow(): void {
     minWidth: 1040,
     minHeight: 680,
     show: false,
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     backgroundColor: '#f3f5f7',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -34,6 +34,49 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function sendMenuAction(action: MenuAction): void {
+  const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  target?.webContents.send('menu:action', action)
+}
+
+function createApplicationMenu(): void {
+  const action = (label: string, id: MenuAction, accelerator?: string): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    click: () => sendMenuAction(id)
+  })
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: 'File',
+      submenu: [action('Open Workspace...', 'open-workspace', 'CmdOrCtrl+O'), { type: 'separator' }, { role: 'quit' }]
+    },
+    {
+      label: 'Edit',
+      submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }]
+    },
+    { label: 'Search', submenu: [action('Filter...', 'focus-filter', 'CmdOrCtrl+F')] },
+    { label: 'View', submenu: [action('Refresh', 'refresh', 'F5')] },
+    {
+      label: 'Actions',
+      submenu: [
+        action('Get Latest', 'get-latest', 'CmdOrCtrl+G'),
+        action('Submit...', 'submit', 'CmdOrCtrl+Enter'),
+        { type: 'separator' },
+        action('Diff', 'diff', 'CmdOrCtrl+D'),
+        action('Revert...', 'revert')
+      ]
+    },
+    {
+      label: 'Connection',
+      submenu: [action('Fetch', 'fetch'), action('Push', 'push')]
+    },
+    { label: 'Tools', submenu: [action('Git Settings...', 'settings')] },
+    { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+    { label: 'Help', submenu: [action('About P4Git', 'about')] }
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 function registerIpc(): void {
@@ -83,6 +126,9 @@ function registerIpc(): void {
     git.history(repoPath, limit)
   )
   ipcMain.handle('git:branches', (_event, repoPath: string) => git.branches(repoPath))
+  ipcMain.handle('git:list-directory', (_event, repoPath: string, relativePath?: string) =>
+    git.listDirectory(repoPath, relativePath)
+  )
   ipcMain.handle('git:checkout', (_event, request: CheckoutRequest) =>
     git.checkout(request.repoPath, request.branch, request.create)
   )
@@ -100,6 +146,7 @@ app.whenReady().then(() => {
   settings = new SettingsStore()
   git = new GitService(settings)
   registerIpc()
+  createApplicationMenu()
   createWindow()
 
   app.on('activate', () => {

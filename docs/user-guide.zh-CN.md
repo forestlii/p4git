@@ -2,95 +2,101 @@
 
 # 使用指南
 
-## 界面布局
+## P4V 风格布局
 
-- **顶部栏**：当前仓库、分支、领先/落后计数、Fetch、Pull、Push、刷新、资源管理器和 Git 设置。
-- **左侧导航**：变更列表、提交历史和分支。
-- **变更视图**：左侧文件列表、中间差异、右侧提交控制。
-- **状态栏**：Git 可用状态、upstream 分支和工作区是否干净。
+P4Git 有意沿用 P4V 桌面端的结构，而不是常见 Git 客户端的仪表盘：
 
-## 变更列表与文件状态
+- **原生菜单**：File、Edit、Search、View、Actions、Connection、Tools、Window、Help。
+- **大图标操作栏**：Refresh、Get Latest、Submit、Checkout、Add、Delete、Revert、Diff、Timelapse、Revgraph、Cancel。
+- **位置栏**：经过校验的 Git 仓库根目录和当前查看的工作区目录。
+- **Workspace 面板**：左侧 Depot/Workspace 页签下的可展开目录树。
+- **主页签**：Files、Pending、Submitted、Stream Graph、Workspaces。
+- **详情面板**：主表格下方的 Details、Files、Jobs、Diff Summary。
+- **Log 与状态栏**：显示执行过的操作、结果、当前路径、upstream 和就绪状态。
 
-P4Git 将 Git 索引映射为接近 P4V 的变更列表模型：
+0.1 版本保留 Timelapse 与 Cancel 的布局位置，但暂时禁用。Revgraph 会打开 Git 分支对应的 **Stream Graph**。
 
-- **Default changelist** 包含工作区中未暂存和未跟踪的改动。
+## Git 操作映射
+
+P4Git 保留 P4V 的操作名称，底层执行 Git：
+
+| P4Git / P4V 操作 | 对应 Git 行为 |
+|---|---|
+| Refresh | 重新读取 `git status`、历史、分支和当前目录 |
+| Get Latest | `git pull --ff-only` |
+| Checkout | 用 `git add` 将所选已跟踪修改加入待提交列表 |
+| Add | 用 `git add` 加入所选未跟踪文件 |
+| Delete | 暂存 Git 已检测到的删除 |
+| Revert | 确认后恢复未暂存的已跟踪文件 |
+| Submit | 用 Ready to submit 创建本地 Git commit |
+| Connection > Fetch | `git fetch --all --prune` |
+| Connection > Push | 推送当前分支；需要时自动创建 upstream |
+
+**Checkout 不会锁定文件，也不会执行 `git checkout`。** Git 编辑文件前不需要 Open for edit；P4Git 中这个按钮表示“把该已跟踪修改加入下一次 Submit”。
+
+## Workspace 与 Files
+
+在左侧 **Workspace** 树展开目录，选择文件夹后，右侧 **Files** 表格会显示其内容。双击文件夹可以打开；发生 Git 改动的文件会显示对应 Action，双击该文件可以查看差异。
+
+位置栏与底部状态栏会持续显示当前本地目录。仓库内部的 `.git` 管理目录不会出现在树中。
+
+## Pending 变更列表
+
+P4Git 把 Git 索引映射为两个 P4V 风格变更列表：
+
+- **Default changelist** 包含未暂存和未跟踪的工作区改动。
 - **Ready to submit** 包含 Git 索引中已暂存的改动。
 
-如果文件的一部分已暂存，而工作副本又有新改动，同一个文件可能同时出现在两个分组。状态标记包括 `M`（修改）、`A`（新增）、`D`（删除）、`R`（重命名）、`C`（复制）、`?`（未跟踪）和 `!`（冲突）。
+部分暂存的文件可能同时出现在两个分组，因为已暂存版本和工作区版本拥有不同的差异。状态标记包括 `M`（修改）、`A`（新增）、`D`（删除）、`R`（重命名）、`C`（复制）、`?`（未跟踪）和 `!`（冲突）。
 
-### 暂存改动
+把文件加入 **Ready to submit** 有两种方式：
 
-- **暂存所选**：把所选路径加入 Git 索引。
-- **暂存全部**：加入 Default changelist 当前显示的全部路径。
-- 对于重命名，P4Git 会同时处理旧路径和新路径，确保删除与新增保持在一起。
+1. 选中文件，并按其状态使用 **Checkout**、**Add** 或 **Delete**。
+2. 从 **Default changelist** 直接拖到 **Ready to submit**。
 
-### 取消暂存
+如果只想从本次提交中移除文件、但保留文件内容，请把它从 **Ready to submit** 拖回 **Default changelist**。这会取消 Git 暂存。
 
-在 Ready to submit 下选择文件并点击 **取消暂存**。内容仍保留在工作区中，只修改 Git 索引。
+## Diff 与 Revert
 
-### 丢弃改动
+双击 Pending 文件，或选中后点击 **Diff**，对应的已暂存或未暂存差异会显示在底部 **Diff Summary**。未跟踪文本文件按全新内容显示；二进制文件和大于 2 MB 的未跟踪文件不提供预览。
 
-对于已经被 Git 跟踪且尚未暂存的文件，点击 **丢弃改动** 并确认后，会从索引恢复工作区内容。P4Git 无法撤销这个操作。
+对于未暂存的已跟踪文件，**Revert** 会在确认后恢复工作区内容，P4Git 无法撤销该操作。未跟踪文件不能使用 Revert，因此 P4Git 不会隐式删除它们。
 
-未跟踪文件不会显示此命令。需要时请在 P4Git 之外删除或移动这些文件。
+## Submit Changelist
 
-## 审阅差异
+1. 把本次需要的文件移入 **Ready to submit**。
+2. 点击操作栏或 Actions 菜单中的 **Submit**。
+3. 在 Submit Changelist 窗口检查完整文件列表。
+4. 输入非空说明并点击 **Submit**。
 
-选择文件后，中间区域会打开对应的已暂存或工作区差异。新增、删除、Hunk 标题和元数据使用不同颜色。
+存在冲突文件时无法提交。操作结果是本地 Git commit，不会自动 Push。P4Git 调用配置的真实 Git，因此仓库 Hooks 和提交策略仍会执行。
 
-- 未跟踪文本文件会按全部新增显示。
-- 不预览未跟踪的二进制文件。
-- 不预览大于 2 MB 的未跟踪文件。
-- 为保证响应速度，界面最多显示 6,000 行差异。
+## Submitted
 
-## 提交变更
+**Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列显示最近 100 个 Git 提交。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
 
-1. 准确暂存本次需要提交的文件。
-2. 解决所有冲突；检测到冲突时 P4Git 会禁用提交按钮。
-3. 填写非空提交说明。
-4. 点击 **提交**。
+0.1 版本暂不提供单个提交的文件列表、Cherry-pick、Reset 和交互式 Rebase。
 
-P4Git 调用真实 Git，因此仓库中的 Hooks 和提交策略仍会执行。Hook 失败时会显示 Git 错误，并且不会将提交报告为成功。
+## Stream Graph
+
+**Stream Graph** 在 P4V 对应位置呈现 Git 分支。它会列出本地和远程分支、标记当前分支、从 `HEAD` 创建本地分支，并在已有本地分支之间切换。0.1 版本的远程分支只读。
+
+如果切换会覆盖本地改动，Git 会阻止操作；P4Git 只显示错误，不会强制切换。
+
+## Workspaces
+
+**Workspaces** 页签显示最后一个工作区和最多 8 个最近仓库。双击表格行即可打开。使用 **File > Open Workspace** 可以选择另一个已有 Git 仓库。
+
+使用 **Tools > Git Settings** 可以选择 Git for Windows 或 UGit 自带的 `git.exe`。P4Git 会先执行 `git --version` 验证，再保存路径。
 
 ## 远程同步
 
-### Fetch
+- **Get Latest** 只允许快进 Pull。本地与远程历史分叉时，请在 P4Git 0.1 之外选择合适的 Merge 或 Rebase。
+- **Connection > Fetch** 更新远程跟踪引用，不修改本地文件。
+- **Connection > Push** 执行普通 Push；新的本地分支会推送到 `origin` 并设置 upstream。
 
-**Fetch** 执行 `git fetch --all --prune`。它下载远程引用并清理失效的远程跟踪引用，不修改本地文件。
-
-### Pull
-
-**Pull** 执行 `git pull --ff-only`。只有当前分支可以快进时才会成功。如果本地和远程历史已经分叉，请在 P4Git 0.1 之外选择并执行合适的 Merge 或 Rebase。
-
-### Push
-
-存在 upstream 时，**Push** 执行普通 `git push`。新的本地分支没有 upstream 时，P4Git 会推送到 `origin`，并将远程同名分支配置为 upstream。
-
-P4Git 禁用了终端交互提示。HTTPS 凭据需要已经保存在 Git Credential Manager 中；SSH 认证需要已经通过密钥或 Agent 正常工作。
-
-## 提交历史
-
-历史视图最多显示最近 100 个提交，包括主题、作者、相对时间、短哈希，以及 `HEAD`、本地分支和远程引用等标记。
-
-0.1 版本暂不提供单个提交的文件差异，也不提供 Revert、Cherry-pick、Reset 和交互式 Rebase。
-
-## 分支
-
-- 本地分支与远程分支分开显示。
-- 当前本地分支会高亮。
-- 输入有效名称，可以从当前 `HEAD` 创建本地分支并切换过去。
-- 可以直接在已有本地分支之间切换。
-
-远程分支目前在界面中只读。可以先用 Git 创建跟踪分支，再用 P4Git 打开；也可以在分支视图中创建需要的本地分支。
-
-如果切换分支会覆盖本地改动，Git 会阻止操作；P4Git 会显示 Git 错误，不会强制切换。
-
-## 工作区与设置
-
-P4Git 会记住最后一个工作区和最多 8 个最近仓库。重新选择 `git.exe` 后，新路径会保存并在后续启动时使用。
-
-点击顶部栏的资源管理器按钮，可以在 Windows 资源管理器中打开经过校验的仓库根目录。
+终端交互提示已禁用。HTTPS 凭据需要已经保存在 Git Credential Manager 中；SSH 认证需要通过已有密钥或 Agent 正常工作。
 
 ## 刻意不自动执行的操作
 
-P4Git 0.1 不会静默 Merge、Rebase、删除未跟踪文件、丢弃已暂存内容、解决冲突或绕过 Git Hooks。这些操作需要更多上下文，初始版本不会替用户猜测。
+P4Git 0.1 不会静默 Merge、Rebase、删除未跟踪文件、丢弃已暂存内容、解决冲突、绕过 Git Hooks，也不会模拟 Perforce 文件锁。这些操作需要额外上下文，客户端不应该替用户猜测。

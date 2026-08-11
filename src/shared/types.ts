@@ -47,6 +47,25 @@ export interface BranchInfo {
   subject: string
 }
 
+export interface WorkspaceEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
+export type MenuAction =
+  | 'open-workspace'
+  | 'focus-filter'
+  | 'refresh'
+  | 'get-latest'
+  | 'submit'
+  | 'revert'
+  | 'diff'
+  | 'fetch'
+  | 'push'
+  | 'settings'
+  | 'about'
+
 export interface AppSettings {
   gitPath?: string
   recentRepositories: string[]
@@ -87,9 +106,11 @@ export interface P4GitApi {
   commit(repoPath: string, message: string): Promise<string>
   getHistory(repoPath: string, limit?: number): Promise<CommitInfo[]>
   getBranches(repoPath: string): Promise<BranchInfo[]>
+  listDirectory(repoPath: string, relativePath?: string): Promise<WorkspaceEntry[]>
   checkout(request: CheckoutRequest): Promise<void>
   fetch(repoPath: string): Promise<void>
   pull(repoPath: string): Promise<void>
   push(repoPath: string): Promise<void>
   revealRepository(repoPath: string): Promise<void>
+  onMenuAction(callback: (action: MenuAction) => void): () => void
 }
