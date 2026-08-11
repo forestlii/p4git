@@ -1,0 +1,17 @@
+node_modules/
+out/
+release/
+artifacts/
+deliverables/
+final-artifacts/
+smoke-artifacts/
+verified-release/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+!.env.example
