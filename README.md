@@ -1,79 +1,92 @@
-# P4Git
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-P4Git 是一款受 P4V 工作流启发的 Git 桌面客户端。它保留现有的 GitLab、GitHub 或自建 Git 服务端，用 changelist、文件差异和明确的同步操作，让团队成员更直观地处理日常版本控制。
+# P4Git — A P4V-Inspired Desktop Client for Git
 
-> P4Git 是独立开源项目，与 Perforce Software, Inc. 无隶属或背书关系。P4V 和 Perforce 是其各自所有者的商标。
+[![Build](https://github.com/forestlii/p4git/actions/workflows/build.yml/badge.svg)](https://github.com/forestlii/p4git/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-0c8b87.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/forestlii/p4git?include_prereleases&color=3273a8)](https://github.com/forestlii/p4git/releases)
 
-## 当前能力
+P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-- 打开任意本地 Git 仓库，并记住最近工作区
-- 按“Ready to submit / Default changelist”区分已暂存和未暂存文件
-- 查看已暂存、未暂存和未跟踪文件的文本差异
-- 暂存、取消暂存、暂存全部，以及确认后丢弃已跟踪文件的改动
-- 编写提交说明并创建本地 commit
-- 查看最近提交历史、引用和作者信息
-- 查看本地/远程分支，创建或切换本地分支
-- Fetch、仅 fast-forward 的 Pull，以及自动设置 upstream 的 Push
-- 自动查找 Git for Windows，也可以手动选择 UGit 内置的 `git.exe`
-- Electron 渲染进程隔离、严格 IPC 白名单和无 shell 的 Git 参数调用
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.0-0c8b87)
 
-## 安装和分发
+## Highlights
 
-P4Git 当前以 Windows x64 为首要目标，支持 Windows 10 及以上版本。运行时需要可用的 Git；如果团队电脑只安装了 UGit，可以在欢迎页选择它使用的 `git.exe`。
+| Area | What P4Git provides |
+|---|---|
+| Workspace | Open any existing Git repository and quickly return to recent workspaces |
+| Changelists | Separate **Ready to submit** (staged) files from the **Default changelist** (working tree) |
+| Review | Read staged, unstaged, and untracked text diffs before changing the index |
+| Submit | Stage, unstage, stage all, review a message, and create a local commit |
+| History | Browse recent commits, authors, refs, and hashes |
+| Branches | Inspect local and remote branches, create a branch, or switch local branches |
+| Sync | Fetch, fast-forward-only pull, and push with automatic upstream setup |
+| Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |
 
-从源码构建：
+## Download
 
-```bash
-npm install
-npm run dist:win
-```
+Download the latest files from [GitHub Releases](https://github.com/forestlii/p4git/releases/latest):
 
-产物会生成在 `release/`：
+- **Setup** — installs P4Git, creates shortcuts, and adds an uninstaller.
+- **Portable** — runs directly without installation; useful for evaluation or restricted machines.
 
-- `P4Git-Setup-<version>-x64.exe`：NSIS 安装程序
-- `P4Git-Portable-<version>-x64.exe`：便携版
+SHA-256 checksums are published in [SHA256SUMS.txt](SHA256SUMS.txt) and attached to the release.
 
-正式分发前建议购买 Windows 代码签名证书并在 CI 中配置签名。未签名安装包可能触发 Microsoft Defender SmartScreen 提示。
+The current binaries are not code-signed. Windows may show an **Unknown publisher** or Microsoft Defender SmartScreen warning. See [Installation and first run](docs/getting-started.md) before distributing P4Git across a team.
 
-## 本地开发
+## Quick Start
 
-要求 Node.js 22+ 和 npm。
+1. Install P4Git or run the portable executable.
+2. Confirm that P4Git finds Git. If it does not, choose a Git for Windows or UGit `git.exe`.
+3. Select **Open Git workspace** and choose an existing repository.
+4. Review files in the **Default changelist**, stage the intended files, enter a message, and commit.
+5. Use **Fetch**, **Pull**, and **Push** to synchronize with the configured remote.
+
+## Documentation
+
+Full documentation lives in [docs/](docs/README.md):
+
+- [Installation and first run](docs/getting-started.md)
+- [User guide](docs/user-guide.md)
+- [Troubleshooting](docs/troubleshooting.md)
+
+## Requirements
+
+- Windows 10 or newer, x64
+- Git 2.23 or newer
+- An existing local Git repository for the current 0.1 release
+- Existing Git credentials for authenticated fetch/pull/push operations
+
+## Safety Model
+
+- The React renderer has no Node.js access; it talks to Electron through a typed IPC allowlist.
+- Git is invoked with argument arrays through `execFile`, never through a command shell.
+- File operations are restricted to paths inside the selected repository.
+- Pull uses `--ff-only`, avoiding an unexpected merge commit.
+- Discarding tracked working-tree changes requires confirmation; untracked files are never deleted by P4Git.
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-质量检查：
+Validation and Windows packaging:
 
 ```bash
-npm run typecheck
-npm test
 npm run build
+npm run dist:win
 ```
 
-## 架构
+The Windows build produces an NSIS installer and a portable executable in `release/`. See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes.
 
-```text
-React renderer (无 Node 权限)
-          │ typed IPC whitelist
-Electron preload (contextBridge)
-          │
-Electron main process
-          ├── GitService → git.exe（execFile，无 shell）
-          ├── SettingsStore
-          └── native dialogs / Explorer
-```
+## Status
 
-Git 命令始终使用参数数组执行，文件路径会校验为当前仓库内的相对路径。Pull 使用 `--ff-only`，避免客户端在用户不知情时制造 merge commit；丢弃工作区改动必须在界面中确认。
+Version **0.1.0** is an initial Windows-first release. Clone UI, credential prompts, conflict resolution, partial-hunk staging, Git LFS locks, and GitLab merge request integration are planned rather than implemented.
 
-## 路线图
+## License
 
-- 提交详情与逐块暂存
-- 冲突解决器和三方合并视图
-- Git LFS 锁定工作流
-- GitLab Merge Request / CI 状态集成
-- 多仓库工作区和子模块视图
-- macOS、Linux 安装包与自动更新
+[MIT](LICENSE) © 2026 P4Git contributors.
 
-欢迎通过 Issue 和 Pull Request 参与。项目采用 [MIT License](LICENSE)。
+P4Git is an independent open-source project and is not affiliated with or endorsed by Perforce Software, Inc. P4V and Perforce are trademarks of their respective owner.
