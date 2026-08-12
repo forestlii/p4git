@@ -143,6 +143,22 @@ describe('GitService Git-native operations', () => {
     expect(deleted).toEqual({ changelists: [], assignments: {}, shelves: [] })
   }, 15_000)
 
+  it('reverts tracked edits and deletes newly added files after UI confirmation', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await writeFile(join(root, 'tracked.txt'), 'edited\n', 'utf8')
+    await writeFile(join(root, 'staged-new.txt'), 'new staged file\n', 'utf8')
+    await writeFile(join(root, 'untracked-new.txt'), 'new untracked file\n', 'utf8')
+    await git(root, 'add', 'staged-new.txt')
+
+    await subject.revert(root, ['tracked.txt', 'staged-new.txt', 'untracked-new.txt'])
+
+    expect(normalizeLines(await readFile(join(root, 'tracked.txt'), 'utf8'))).toBe('initial\n')
+    await expect(readFile(join(root, 'staged-new.txt'))).rejects.toThrow()
+    await expect(readFile(join(root, 'untracked-new.txt'))).rejects.toThrow()
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('')
+  }, 15_000)
+
   it('fast-forwards Get Latest and reports diverged branches without changing local history', async () => {
     const root = await createRepository()
     const remote = await mkdtemp(join(tmpdir(), 'p4git-service-'))

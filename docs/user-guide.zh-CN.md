@@ -29,7 +29,7 @@ P4Git 保留 P4V 的操作名称，底层执行 Git：
 | Checkout | Workspace 中把已跟踪修改加入 Ready to submit；Depot 中取出所选分支版本后加入 Ready to submit；干净文件无需 Git 锁 |
 | Add | 用 `git add` 加入所选未跟踪文件 |
 | Delete | `git rm` 删除所选已跟踪文件并暂存删除 |
-| Revert | 确认后把所选文件的索引和工作树恢复到 `HEAD`；Add 文件保留在磁盘 |
+| Revert | 已跟踪文件恢复到 `HEAD`；新增/未跟踪文件只在单独列出并确认后删除 |
 | Diff | 对比工作区、索引、所选 Depot 分支或提交的文本差异 |
 | Timelapse | 用 `git blame --line-porcelain` 显示逐行作者、提交和时间 |
 | Revgraph | 打开以 commit parent 和 Git 分支绘制的多轨 Revision/Stream Graph |
@@ -50,7 +50,7 @@ P4V 的 Depot 是服务端版本库，Workspace 是本地工作副本。P4Git �
 
 ## Workspace 与 Files
 
-在左侧 **Workspace** 树展开目录，选择文件夹后，右侧 **Files** 表格会显示其内容。双击文件夹可以打开；发生 Git 改动的文件会显示对应 Action，双击该文件可以查看差异。
+在左侧 **Workspace** 树展开目录，选择文件夹后，右侧 **Files** 表格会显示其内容。双击文件夹可以打开；发生 Git 改动的文件会显示对应 Action，双击该文件可以查看差异。选择 Workspace 文件或文件夹时，还会加载该路径的 **History**，并让 **Submitted** 只显示曾修改该路径的提交；关闭 History 页签即可恢复仓库全部提交。
 
 位置栏与底部状态栏会持续显示当前本地目录。仓库内部的 `.git` 管理目录不会出现在树中。
 
@@ -62,7 +62,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 - **Default changelist** 包含尚未归入命名列表的未暂存或未跟踪改动。
 - **命名 Changelist** 是按任务、功能或修复整理改动的本地持久分组，可以为空，也可以填写说明。
 
-通过 Pending 页的 **New Changelist...** 或 **Actions > New Changelist...** 创建列表。使用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Pending 文件，然后把它们拖到某个分组，或右键并使用 **Move to Changelist** 批量归组。多选后的 **Diff Selected Files** 会比较全部选中文件：内置窗口提供接近 P4V 的文件列表以及 Previous/Next 导航；配置外部 Diff 后会把每个文件都交给外部工具，不再只处理焦点行。该子菜单中的 **New Changelist...** 会创建新列表，并立即把全部选中文件移入其中。右键命名列表可提交、编辑、删除，或把其中全部文件移入 Ready。删除列表不会删除任何文件，其中的改动会回到 **Default changelist**。
+通过 Pending 页的 **New Changelist...** 或 **Actions > New Changelist...** 创建列表。使用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Pending 文件，然后把它们拖到某个分组，或右键并使用 **Move to Changelist** 批量归组。多选后的 **Diff Selected Files** 会比较全部选中文件：内置窗口提供接近 P4V 的文件列表以及 Previous/Next 导航；配置外部 Diff 后会把每个文件都交给外部工具，不再只处理焦点行。该子菜单中的 **New Changelist...** 会创建新列表，并立即把全部选中文件移入其中。右键命名列表可提交、编辑、删除，或把其中全部文件移入 Ready。删除列表不会删除任何文件，其中的改动会回到 **Default changelist**。Changelist 默认折叠；每个仓库的展开状态会在切换页签和重启应用后继续保留。
 
 命名列表的归属信息保存在当前仓库的 `.git/p4git/changelists.json` 中。它在应用重启后仍然存在，但只属于当前 clone，也不可能进入 Git commit；列表改名和说明同样保存在这里。
 
@@ -74,7 +74,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 双击 Pending 文件，或选中后点击 **Diff**，对应的已暂存或未暂存差异会显示在底部 **Diff Summary**。未跟踪文本文件按全新内容显示；二进制文件和大于 2 MB 的未跟踪文件不提供预览。
 
-**Revert** 会在确认后同时恢复所选已跟踪文件的索引和工作区内容，P4Git 无法撤销该操作。已 Add 的新文件会取消暂存但保留磁盘内容；从未 Add 的未跟踪文件不能 Revert，因此 P4Git 不会隐式删除它们。
+**Revert** 会在确认后同时恢复所选已跟踪文件的索引和工作区内容。对于选中的新增或未跟踪文件，P4Git 会另行列出文件清单并警告永久删除；混合多选时只删除清单中的新文件，其余已跟踪文件恢复到 `HEAD`。这些操作都无法由 P4Git 撤销。
 
 ### 外部 Diff 工具
 
@@ -103,7 +103,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 **Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列显示最近 100 个 Git 提交。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
 
-每个提交左侧箭头可原位展开文件列表。右键提交可查看文件列表、与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
+每个提交左侧箭头可原位展开文件列表。右键 **View Details...** 会打开接近 P4V 的详情窗口，显示完整说明、作者、日期、parents 和文件状态。详情中的文件可右键与本地 Workspace 版本比较（已配置外部 Diff 时优先使用）或复制路径。其他右键操作包括与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
 
 ## History
 
@@ -123,7 +123,7 @@ Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会
 
 ## 多选、布局、任务与 LFS 锁
 
-Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
+Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。当前页签 Filter 支持 **Contains**、**Starts with**、正则表达式和区分大小写，可匹配可见名称、路径、状态、作者、说明、哈希和 ref；无效正则会明确报错。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
 
 Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态。Fetch 开始后，底部会立即显示旋转状态和不确定进度线，慢速远端不再像“点击无反应”；已有 Fetch 运行时会阻止重复启动。**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
 

@@ -454,6 +454,9 @@ textarea:focus-visible {
   background: transparent;
   font-style: italic;
 }
+.filter-bar.filtering { box-shadow: inset 3px 0 #1a93bd; }
+.filter-bar.invalid { box-shadow: inset 3px 0 #c3333d; }
+.filter-bar.invalid > span { color: #b4232d; }
 
 .filter-bar > span {
   margin-left: auto;
@@ -479,10 +482,18 @@ textarea:focus-visible {
 }
 .advanced-filter label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .advanced-filter select { width: 150px; height: 23px; border: 1px solid #999; background: white; font-weight: 400; }
+.advanced-filter label > input[type='text'],
+.advanced-filter label:first-child > input { width: min(360px, 28vw); height: 23px; border: 1px solid #999; padding: 2px 5px; background: white; font-weight: 400; }
 .advanced-filter .check-filter { font-weight: 400; }
 .advanced-filter .check-filter input { width: auto; height: auto; }
 .advanced-filter button { height: 23px; border: 1px solid #999; background: linear-gradient(#fff, #e5e5e5); }
 .advanced-filter span { overflow: hidden; color: #6a747a; text-overflow: ellipsis; white-space: nowrap; }
+.advanced-filter span.filter-error { color: #b4232d; }
+
+.submitted-layout { display: grid; min-height: 0; height: 100%; grid-template-rows: auto minmax(0, 1fr); }
+.submitted-layout .submitted-table { overflow: auto; }
+.submitted-scope { display: flex; min-width: 0; height: 28px; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid #aaa; background: #eef4f6; }
+.submitted-scope span { overflow: hidden; color: #53636b; text-overflow: ellipsis; white-space: nowrap; }
 
 .table-area {
   min-height: 0;

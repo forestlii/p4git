@@ -267,6 +267,7 @@ function contextMenuTemplate(
       ]
     case 'submitted-change':
       return [
+        item('View Details...', 'view-commit-details'),
         item('View Files', 'commit-files'),
         item('Diff Against Previous Revision', 'commit-diff'),
         separator,

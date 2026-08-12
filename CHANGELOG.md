@@ -2,6 +2,26 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.7.0 — 2026-08-12
+
+### English
+
+- Revert now lists newly added files and requires explicit confirmation before permanently deleting them; tracked files in the same selection are restored to `HEAD`.
+- Added a P4V-style **View Details...** window to Submitted commit context menus, including metadata, complete description, changed files, status, local Diff, and path copy.
+- Pending Changelists start collapsed and persist expanded/collapsed state per repository across tab switches and application restarts.
+- Branch switching now reloads Client identity, upstream, Workspace/Depot trees, history, graph, Changelists, and operation state as one consistent snapshot.
+- Workspace file/folder selection automatically prepares path-linked History and filters Submitted to commits affecting that path.
+- Rebuilt active-tab filtering with working Contains, Starts with, Regex, Match case, Clear, invalid-regex feedback, multi-field matching, and accurate counts.
+
+### 中文
+
+- Revert 新增文件前会列出将永久删除的文件并要求明确确认；同一选择中的已跟踪文件恢复到 `HEAD`。
+- Submitted 提交右键新增 P4V 风格 **View Details...** 窗口，展示元数据、完整说明、文件及状态，并支持本地 Diff 和复制路径。
+- Pending Changelist 默认折叠，按仓库持久记录展开/折叠状态，切换页签或重启后保持。
+- 切换分支后统一重载 Client 标识、upstream、Workspace/Depot 树、历史、提交图、Changelist 和操作状态。
+- 点击 Workspace 文件或文件夹会自动准备对应 History，并让 Submitted 只显示影响该路径的提交。
+- 重做活动页签 Filter：Contains、Starts with、Regex、Match case、Clear、非法正则提示、多字段匹配和结果计数均实际生效。
+
 ## 0.6.1 — 2026-08-12
 
 ### English

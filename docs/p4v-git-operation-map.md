@@ -19,7 +19,7 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Checkout / Open for edit | `git add` an existing edit; restore and stage a Depot revision; clean files require no lock | Implemented, non-locking |
 | Add | `git add` an untracked file | Implemented |
 | Delete | `git rm`, or record a deletion already made on disk | Implemented |
-| Revert | Restore both index and working tree from `HEAD`; a newly added file is only unstaged | Implemented, confirmed |
+| Revert | Restore tracked files from `HEAD`; explicitly confirmed added/untracked selections are deleted from disk | Implemented, confirmed |
 | Diff | Working tree, index, Depot ref, and commit diffs | Implemented, textual |
 | External Diff tool | User-configured executable with argument templates; Beyond Compare defaults and built-in fallback | Implemented for file diffs |
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
@@ -29,9 +29,10 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
 | Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |
 | Submit | Create a local commit from the Git index without automatic Push | Implemented |
-| Submitted | Git log with expandable files, diffs, hash copy, and safe `git revert` | Implemented |
+| Submitted | Git log with expandable files, P4V-style commit details, local-file diff, hash copy, and safe `git revert` | Implemented |
 | Jobs | GitLab Issues | Implemented when a GitLab project is configured |
-| File / folder History | Persistent path-linked History tab backed by Git log, revision restore, and Previous/HEAD diff | Implemented |
+| File / folder History | Workspace-selection-linked History and Submitted views backed by Git log, revision restore, and Previous/HEAD diff | Implemented |
+| View filters | Multi-field Contains/Starts-with/Regex filters with case matching and validation | Implemented |
 | Workspaces | Recently opened local Git repositories | Implemented |
 | Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more | Implemented |
 | Log | Operation intent, success, and error output with a native Clear action | Implemented |

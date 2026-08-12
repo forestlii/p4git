@@ -248,6 +248,7 @@ export class GitService {
         await this.run(root, ['restore', '--staged', '--', safePath]).catch(() =>
           this.run(root, ['reset', '--', safePath])
         )
+        await rm(join(root, safePath), { force: true })
       }
     }
   }

@@ -29,7 +29,7 @@ P4Git keeps P4V action names while using Git underneath:
 | Checkout | Move a tracked Workspace edit to Ready to submit; or retrieve a selected Depot revision and make it ready to submit; clean Git files require no lock |
 | Add | Stage a selected untracked file with `git add` |
 | Delete | Remove a tracked file with `git rm` and stage the deletion |
-| Revert | Restore both the index and working copy to `HEAD`; an added file remains on disk |
+| Revert | Restore tracked files to `HEAD`; delete selected added/untracked files only after an explicit warning |
 | Diff | Compare the worktree, index, selected Depot ref, or a submitted commit |
 | Timelapse | Show per-line author, commit, and date using `git blame --line-porcelain` |
 | Revgraph | Open a multi-lane Revision/Stream Graph from commit parents and Git branches |
@@ -50,7 +50,7 @@ P4V defines Depot as the server-side version repository and Workspace as the loc
 
 ## Workspace and Files
 
-Expand folders in the left **Workspace** tree and select a folder to display its children in **Files**. Double-click a folder to open it. A file that has a Git change shows its action in the table; double-clicking that changed file opens its diff.
+Expand folders in the left **Workspace** tree and select a folder to display its children in **Files**. Double-click a folder to open it. A file that has a Git change shows its action in the table; double-clicking that changed file opens its diff. Selecting a Workspace file or folder also loads that path into **History** and scopes **Submitted** to commits that touched it. Close the History tab to return Submitted to the repository-wide log.
 
 The location bar and bottom status bar always show which local directory is being viewed. The `.git` administration directory is never exposed in the tree.
 
@@ -62,7 +62,7 @@ P4Git adds a repository-local changelist layer on top of Git:
 - **Default changelist** contains unstaged or untracked changes that have not been assigned to a named list.
 - **Named changelists** are persistent local groups for a task, feature, or fix. They may be empty and include an optional description.
 
-Choose **New Changelist...** in Pending or **Actions > New Changelist...** to create a list. Use `Ctrl`, `Shift`, or `Ctrl+A` to select multiple pending files, then drag them onto a group or right-click and use **Move to Changelist**. **Diff Selected Files** opens every selected comparison: the built-in window provides a P4V-style file list and Previous/Next navigation, while a configured external Diff tool receives every file instead of only the focused row. The submenu's **New Changelist...** command creates a list and immediately moves the entire selection into it. Right-click a named list to submit, edit, delete, or move all of its files to Ready. Deleting a list never deletes files: its assigned changes return to **Default changelist**.
+Choose **New Changelist...** in Pending or **Actions > New Changelist...** to create a list. Use `Ctrl`, `Shift`, or `Ctrl+A` to select multiple pending files, then drag them onto a group or right-click and use **Move to Changelist**. **Diff Selected Files** opens every selected comparison: the built-in window provides a P4V-style file list and Previous/Next navigation, while a configured external Diff tool receives every file instead of only the focused row. The submenu's **New Changelist...** command creates a list and immediately moves the entire selection into it. Right-click a named list to submit, edit, delete, or move all of its files to Ready. Deleting a list never deletes files: its assigned changes return to **Default changelist**. Changelists start collapsed, and each repository's expanded groups are remembered across tab changes and application restarts.
 
 Named-list assignments are stored inside the current repository at `.git/p4git/changelists.json`. They survive application restarts, remain local to that clone, and cannot enter a Git commit. Renames and descriptions are saved there as well.
 
@@ -74,7 +74,7 @@ Moving a file to **Ready to submit** stages it. Moving a staged file to Default 
 
 Double-click a pending file or select it and choose **Diff**. The matching staged or unstaged diff appears under **Diff Summary**. Untracked text files appear as all-new content; binary files and untracked files over 2 MB are not previewed.
 
-After confirmation, **Revert** restores both the index and working-tree content of a tracked file. P4Git cannot undo this operation. A newly added file is unstaged but remains on disk. A never-added untracked file cannot be reverted, so P4Git never deletes it implicitly.
+After confirmation, **Revert** restores both the index and working-tree content of tracked files. Selected added or untracked files are listed in a separate warning because Revert permanently deletes them from disk. A mixed multi-selection restores tracked files and deletes only the explicitly listed new files. P4Git cannot undo either operation.
 
 ### External Diff tool
 
@@ -103,7 +103,7 @@ Conflicted files disable submission. The result is a local Git commit; it is not
 
 The **Submitted** table shows up to 100 recent Git commits using P4V-style columns: Change, Date Submitted, Submitted By, and Description. Selecting a row displays its full hash, author, date, and subject in **Details**.
 
-The disclosure arrow expands a commit's changed files in place. Context actions expose files, full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
+The disclosure arrow expands a commit's changed files in place. **View Details...** opens a P4V-style window with the complete description, author, date, parents, and changed-file statuses. Right-click a file in that window to compare the submitted version with the local Workspace copy (using the configured external Diff tool when available) or copy its path. Other context actions expose the full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
 
 ## History
 
@@ -123,7 +123,7 @@ If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git o
 
 ## Selection, Layout, Tasks, and LFS Locks
 
-Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
+Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. The active-tab filter supports **Contains**, **Starts with**, regular expressions, and optional case matching across visible names, paths, actions, authors, descriptions, hashes, and refs; invalid expressions are reported instead of silently matching nothing. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
 
 The **Tasks** button next to Log opens command history and running-process status. Fetch displays an animated footer status and indeterminate progress line immediately, so a slow remote cannot look like an ignored click; starting a duplicate Fetch while one is active is blocked. **Cancel Running** terminates active Git process trees. Open **Tools > Git > Git LFS Locks** or a file's **Git** context submenu to inspect, create, unlock, or force-unlock LFS locks. P4Git reports when Git LFS or remote locking is unavailable.
 
