@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest } from '../shared/types'
+import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest, ViewTab } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -131,6 +131,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('shell:open-file', repoPath, filePath),
   showContextMenu: (request: ContextMenuRequest) =>
     ipcRenderer.invoke('menu:context', request),
+  updateViewTabs: (visible: ViewTab[], active: ViewTab) =>
+    ipcRenderer.invoke('menu:update-view-tabs', visible, active),
   onMenuAction: (callback: (action: MenuAction) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, action: MenuAction): void => callback(action)
     ipcRenderer.on('menu:action', listener)

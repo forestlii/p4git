@@ -13,7 +13,8 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | P4V 概念或操作 | P4Git / Git 策略 | 状态 |
 |---|---|---|
 | Depot | 所选 upstream、`HEAD`、本地或远程分支的已提交文件树 | 已实现 |
-| Workspace | 磁盘上的 Git working tree，包含未跟踪文件 | 已实现 |
+| Workspace | 磁盘上的 Git working tree，包含未跟踪文件及待删除文件占位 | 已实现 |
+| 文件图标与徽标 | P4V 风格 Depot/Workspace 对象，加同步/落后/仅本地/不同/动作/Resolve/LFS Lock 叠加状态 | 按 Git 语义实现 |
 | Refresh | 重新读取 status、当前文件树、提交历史和分支 | 已实现 |
 | Get Latest | 顶层先 Fetch，可快进时自动更新，分叉时询问 Merge/Rebase；Depot 文件/目录从所选 ref 恢复 | 已实现 |
 | Checkout / Open for edit | 已修改文件 `git add`；Depot 版本恢复后暂存；干净文件不加锁 | 已实现，非锁定式 |
@@ -29,10 +30,11 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Pending changelist | Ready 映射为 Git index；本地持久化的多个命名列表用于整理未暂存改动 | 已实现，本地语义 |
 | Shelve / Unshelve | Changelist 映射为带 P4Git 元数据的本地 Git stash，恢复时还原文件归组 | 已实现，本地语义 |
 | Submit | 从 Git index 创建本地 commit，不自动 Push | 已实现 |
-| Submitted | Git log；展开文件、P4V 风格提交详情、本地文件 Diff、复制 hash，并用 `git revert` 撤销所选提交 | 已实现 |
+| Submitted | Git log；展开文件、P4V 风格提交详情、上一版本/本地文件 Diff、复制 hash，并用 `git revert` 撤销所选提交 | 已实现 |
 | Jobs | GitLab Issues | GitLab 项目已配置时实现 |
 | 文件/目录 History | Workspace 选择联动 History 与 Submitted，基于 Git log 支持恢复版本及与 Previous/HEAD 比较 | 已实现 |
 | 界面 Filter | 多字段 Contains/Starts with/正则筛选，支持大小写匹配和表达式校验 | 已实现 |
+| View 管理页签 | 主页签可关闭，由带勾选状态的 View 菜单恢复并持久保存状态 | 已实现 |
 | Workspaces | 最近打开的本地 Git 仓库 | 已实现 |
 | 原生右键菜单 | 按 Workspace、Depot、Pending、Submitted、Branch 等对象显示适用操作 | 已实现 |
 | Log | 显示命令意图、成功或错误，可右键清空 | 已实现 |

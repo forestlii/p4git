@@ -627,15 +627,16 @@ export class GitService {
 
     const root = await this.repositoryRoot(request.repoPath)
     const safePath = this.safeRelativePath(root, request.filePath)
+    const leftSafePath = request.leftFilePath ? this.safeRelativePath(root, request.leftFilePath) : safePath
+    const rightSafePath = request.rightFilePath ? this.safeRelativePath(root, request.rightFilePath) : safePath
     void this.cleanupDiffTemps()
     const temporary = await mkdtemp(join(tmpdir(), 'p4git-diff-'))
-    const fileName = basename(safePath)
-    const leftPath = join(temporary, 'left', fileName)
-    const rightPath = join(temporary, 'right', fileName)
+    const leftPath = join(temporary, 'left', basename(leftSafePath))
+    const rightPath = join(temporary, 'right', basename(rightSafePath))
     await Promise.all([mkdir(dirname(leftPath), { recursive: true }), mkdir(dirname(rightPath), { recursive: true })])
     await Promise.all([
-      this.materializeDiffSource(root, safePath, request.left, leftPath),
-      this.materializeDiffSource(root, safePath, request.right, rightPath)
+      this.materializeDiffSource(root, leftSafePath, request.left, leftPath),
+      this.materializeDiffSource(root, rightSafePath, request.right, rightPath)
     ])
 
     const args = expandDiffToolArguments(configured.diffToolArguments?.trim() || DEFAULT_DIFF_TOOL_ARGUMENTS, {
@@ -840,16 +841,19 @@ export class GitService {
 
     const entries = await readdir(requested, { withFileTypes: true })
     const treeish = fromRoot ? `HEAD:${fromRoot.replaceAll('\\', '/')}` : 'HEAD'
-    const [committedOutput, stagedOutput] = await Promise.all([
+    const [committedOutput, stagedOutput, unsyncedOutput, deletedOutput] = await Promise.all([
       this.run(root, ['ls-tree', '-z', treeish]).catch(() => ''),
-      this.run(root, ['diff', '--cached', '--name-only', '-z', '--', fromRoot || '.']).catch(() => '')
+      this.run(root, ['diff', '--cached', '--name-only', '-z', '--', fromRoot || '.']).catch(() => ''),
+      this.run(root, ['diff', '--name-only', '-z', 'HEAD...@{upstream}', '--', fromRoot || '.']).catch(() => ''),
+      this.run(root, ['diff', '--name-only', '--diff-filter=D', '-z', 'HEAD', '--', fromRoot || '.']).catch(() => '')
     ])
     const committedNames = new Set(committedOutput
       .split('\0')
       .filter(Boolean)
       .map((line) => line.slice(line.indexOf('\t') + 1)))
     const stagedPaths = stagedOutput.split('\0').filter(Boolean)
-    return entries
+    const unsyncedPaths = unsyncedOutput.split('\0').filter(Boolean)
+    const diskEntries: WorkspaceEntry[] = entries
       .filter((entry) => entry.name !== '.git' && (entry.isDirectory() || entry.isFile()))
       .map((entry) => ({
         name: entry.name,
@@ -857,8 +861,19 @@ export class GitService {
         isDirectory: entry.isDirectory(),
         tracked: committedNames.has(entry.name) || (entry.isDirectory()
           ? stagedPaths.some((path) => path.startsWith(`${join(fromRoot, entry.name).replaceAll('\\', '/')}/`))
-          : stagedPaths.includes(join(fromRoot, entry.name).replaceAll('\\', '/')))
+          : stagedPaths.includes(join(fromRoot, entry.name).replaceAll('\\', '/'))),
+        unsynced: entry.isDirectory()
+          ? unsyncedPaths.some((path) => path.startsWith(`${join(fromRoot, entry.name).replaceAll('\\', '/')}/`))
+          : unsyncedPaths.includes(join(fromRoot, entry.name).replaceAll('\\', '/'))
       }))
+    const present = new Set(diskEntries.map((entry) => entry.path))
+    const deletedEntries: WorkspaceEntry[] = deletedOutput.split('\0').filter(Boolean).flatMap((path) => {
+      const normalizedPath = path.replaceAll('\\', '/')
+      const directory = dirname(normalizedPath).replaceAll('\\', '/')
+      if ((directory === '.' ? '' : directory) !== fromRoot.replaceAll('\\', '/') || present.has(normalizedPath)) return []
+      return [{ name: basename(normalizedPath), path: normalizedPath, isDirectory: false, tracked: true }]
+    })
+    return [...diskEntries, ...deletedEntries]
       .sort((left, right) => {
         if (left.isDirectory !== right.isDirectory) return left.isDirectory ? -1 : 1
         return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })

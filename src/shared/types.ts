@@ -52,6 +52,7 @@ export interface WorkspaceEntry {
   path: string
   isDirectory: boolean
   tracked: boolean
+  unsynced?: boolean
 }
 
 export interface RevisionFile {
@@ -338,6 +339,8 @@ export interface ContextMenuRequest {
   multiple?: boolean
 }
 
+export type ViewTab = 'files' | 'history' | 'pending' | 'submitted' | 'stream' | 'workspaces'
+
 export type MenuAction =
   | 'open-workspace'
   | 'focus-filter'
@@ -376,6 +379,7 @@ export type MenuAction =
   | 'new-changelist'
   | 'history'
   | 'lfs-locks'
+  | `view-${ViewTab}`
 
 export interface AppSettings {
   gitPath?: string
@@ -465,6 +469,8 @@ export type ExternalDiffSource =
 export interface ExternalDiffRequest {
   repoPath: string
   filePath: string
+  leftFilePath?: string
+  rightFilePath?: string
   left: ExternalDiffSource
   right: ExternalDiffSource
   leftTitle: string
@@ -582,5 +588,6 @@ export interface P4GitApi {
   revealPath(repoPath: string, filePath: string): Promise<void>
   openFile(repoPath: string, filePath: string): Promise<string | undefined>
   showContextMenu(request: ContextMenuRequest): Promise<ContextMenuAction | undefined>
+  updateViewTabs(visible: ViewTab[], active: ViewTab): Promise<void>
   onMenuAction(callback: (action: MenuAction) => void): () => void
 }

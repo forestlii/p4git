@@ -17,7 +17,8 @@ import type {
   PushRequest,
   InitRequest,
   ResetMode,
-  SelectiveMergeRequest
+  SelectiveMergeRequest,
+  ViewTab
 } from '../shared/types'
 import { GitService } from './git/service'
 import { SettingsStore } from './settings'
@@ -66,6 +67,13 @@ function createApplicationMenu(): void {
     accelerator,
     click: () => sendMenuAction(id)
   })
+  const viewTab = (label: string, tab: ViewTab, checked = true): MenuItemConstructorOptions => ({
+    id: `view-tab-${tab}`,
+    label,
+    type: 'checkbox',
+    checked,
+    click: () => sendMenuAction(`view-${tab}`)
+  })
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
@@ -81,7 +89,16 @@ function createApplicationMenu(): void {
       submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }]
     },
     { label: 'Search', submenu: [action('Filter...', 'focus-filter', 'CmdOrCtrl+F')] },
-    { label: 'View', submenu: [action('Refresh', 'refresh', 'F5'), { type: 'separator' }, action('History', 'history')] },
+    { label: 'View', submenu: [
+      action('Refresh', 'refresh', 'F5'),
+      { type: 'separator' },
+      viewTab('Files', 'files'),
+      viewTab('History', 'history', false),
+      viewTab('Pending Changelists', 'pending'),
+      viewTab('Submitted Changelists', 'submitted'),
+      viewTab('Stream Graph', 'stream'),
+      viewTab('Workspaces', 'workspaces')
+    ] },
     {
       label: 'Actions',
       submenu: [
@@ -299,6 +316,7 @@ function contextMenuTemplate(
       ]
     case 'compare-file':
       return [
+        item('Diff Against Previous Revision', 'diff-previous'),
         item('Diff Against Local Workspace', 'diff-local'),
         separator,
         item('Copy File Path', 'copy-path')
@@ -645,6 +663,23 @@ function registerIpc(): void {
       const menu = Menu.buildFromTemplate(contextMenuTemplate(request, choose))
       menu.popup({ window: owner, callback: () => { if (!selected) resolve(undefined) } })
     })
+  })
+  ipcMain.handle('menu:update-view-tabs', (_event, visible: ViewTab[], active: ViewTab) => {
+    const allowed: ViewTab[] = ['files', 'history', 'pending', 'submitted', 'stream', 'workspaces']
+    const visibleSet = new Set(visible.filter((tab) => allowed.includes(tab)))
+    const menu = Menu.getApplicationMenu()
+    for (const tab of allowed) {
+      const item = menu?.getMenuItemById(`view-tab-${tab}`)
+      if (!item) continue
+      item.checked = visibleSet.has(tab)
+      item.enabled = !visibleSet.has(tab) || visibleSet.size > 1
+    }
+    const activeItem = menu?.getMenuItemById(`view-tab-${active}`)
+    if (activeItem) activeItem.sublabel = 'Active'
+    for (const tab of allowed.filter((tab) => tab !== active)) {
+      const item = menu?.getMenuItemById(`view-tab-${tab}`)
+      if (item) item.sublabel = ''
+    }
   })
 }
 

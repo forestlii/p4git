@@ -16,7 +16,7 @@ P4Git 有意沿用 P4V 桌面端的结构，而不是常见 Git 客户端的仪�
 
 **Timelapse** 使用 Git blame 提供逐行历史。**Revgraph** 会打开使用真实 commit parent 关系绘制的 **Stream Graph**。Git 命令运行时 **Cancel** 会启用，并终止由 P4Git 启动的命令进程树。
 
-位置栏可以直接编辑并按 Enter 导航；右侧按钮提供最近地址、添加/移除书签和书签列表。左侧 Workspace 下拉框切换最近仓库，表格列标题可点击排序；树和主列表各自有过滤入口。
+位置栏可以直接编辑并按 Enter 导航；右侧按钮提供最近地址、添加/移除书签和书签列表。左侧 Workspace 下拉框切换最近仓库，表格列标题可点击排序；树和主列表各自有过滤入口。Files、History、Pending、Submitted、Stream Graph、Workspaces 都可以关闭，并通过 **View** 菜单中带勾选状态的项目恢复。P4Git 会记住可见/活动页签、各页独立筛选、滚动位置及已挂载视图状态；最后一个可见页签不能关闭。
 
 ## Git 操作映射
 
@@ -48,9 +48,11 @@ P4V 的 Depot 是服务端版本库，Workspace 是本地工作副本。P4Git �
 - Depot 顶部下拉框用于切换查看的 Git 引用；从 Depot 右键可 Get Latest Revision、Checkout、Diff、File History、Time-lapse，或定位到 Workspace。
 - Workspace 右键可 Checkout、Add、Delete、Revert、Diff、File History、Time-lapse、资源管理器定位，以及定位到 Depot。
 
+文件树遵循 P4V 的“对象图标 + 可叠加徽标”模型：Depot 文件夹为蓝色，Workspace 文件夹为黄色；文件可同时显示多个状态。徽标区分已同步到 head、落后于 upstream、仅存在于 Workspace、未暂存内容不同、自己的 Add/Edit/Delete/Move/Copy、需要 Resolve，以及自己或其他用户持有的 Git LFS Lock。悬停图标可查看完整状态。红色动作徽标表示自己的待提交操作；Git 无法可靠提供的其他用户 Perforce Checkout 状态不会伪造。
+
 ## Workspace 与 Files
 
-在左侧 **Workspace** 树展开目录，选择文件夹后，右侧 **Files** 表格会显示其内容。双击文件夹可以打开；发生 Git 改动的文件会显示对应 Action，双击该文件可以查看差异。选择 Workspace 文件或文件夹时，还会加载该路径的 **History**，并让 **Submitted** 只显示曾修改该路径的提交；关闭 History 页签即可恢复仓库全部提交。
+在左侧 **Workspace** 树展开目录，选择文件夹后，右侧 **Files** 表格会显示其内容。双击文件夹可以打开；发生 Git 改动的文件会显示对应 Action，双击该文件可以查看差异。选择 Workspace 文件或文件夹时，会立即让 **History** 与 **Submitted** 指向该路径，但不会改变当前主页签。Submitted 查询期间先清空旧行；没有提交记录时保持空表。选择 Workspace 根目录即可恢复仓库全部提交。
 
 位置栏与底部状态栏会持续显示当前本地目录。仓库内部的 `.git` 管理目录不会出现在树中。
 
@@ -103,7 +105,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 **Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列显示最近 100 个 Git 提交。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
 
-每个提交左侧箭头可原位展开文件列表。右键 **View Details...** 会打开接近 P4V 的详情窗口，显示完整说明、作者、日期、parents 和文件状态。详情中的文件可右键与本地 Workspace 版本比较（已配置外部 Diff 时优先使用）或复制路径。其他右键操作包括与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
+每个提交左侧箭头可原位展开文件列表。右键 **View Details...** 会打开接近 P4V 的详情窗口，显示完整说明、作者、日期、parents 和文件状态。详情中的文件可右键与上一版本或本地 Workspace 版本比较（已配置外部 Diff 时优先使用），也可复制路径；新增/删除使用空版本，重命名会使用旧路径进行正确比较。其他右键操作包括与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
 
 ## History
 

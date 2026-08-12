@@ -36,6 +36,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_APPEARANCE, DEFAULT_DIFF_TOOL_ARGUMENTS, DEFAULT_MERGE_TOOL_ARGUMENTS } from '../../shared/types'
 import { filterError, filterQuery, makeFilterExpression, matchesFilter } from './filter'
 import type { FilterMode } from './filter'
+import { p4vEntryVisual } from './file-status'
 import type {
   AppearanceSettings,
   AppSettings,
@@ -66,10 +67,11 @@ import type {
   StashEntry,
   ShelfInfo,
   TaskProgress,
+  ViewTab,
   WorkspaceEntry
 } from '../../shared/types'
 
-type MainTab = 'files' | 'history' | 'pending' | 'submitted' | 'stream' | 'workspaces'
+type MainTab = ViewTab
 type DetailTab = 'details' | 'files' | 'jobs' | 'diff'
 type TreeMode = 'depot' | 'workspace'
 type TreeSort = 'name' | 'type' | 'status'
@@ -133,6 +135,38 @@ const tabLabels: Record<MainTab, string> = {
   submitted: 'Submitted',
   stream: 'Stream Graph',
   workspaces: 'Workspaces'
+}
+const allMainTabs = Object.keys(tabLabels) as MainTab[]
+const defaultVisibleTabs: MainTab[] = ['files', 'pending', 'submitted', 'stream', 'workspaces']
+
+function readTabLayout(): { visible: MainTab[]; active: MainTab } {
+  try {
+    const value = JSON.parse(localStorage.getItem('p4git-main-tabs') ?? '{}') as { visible?: string[]; active?: string }
+    const visible = allMainTabs.filter((tab) => value.visible?.includes(tab))
+    const safeVisible = visible.length ? visible : defaultVisibleTabs
+    const active = allMainTabs.includes(value.active as MainTab) && safeVisible.includes(value.active as MainTab)
+      ? value.active as MainTab
+      : safeVisible.includes('submitted') ? 'submitted' : safeVisible[0]
+    return { visible: safeVisible, active }
+  } catch {
+    return { visible: defaultVisibleTabs, active: 'submitted' }
+  }
+}
+
+interface TabFilterState { query: string; mode: FilterMode; caseSensitive: boolean }
+const emptyTabFilter: TabFilterState = { query: '', mode: 'contains', caseSensitive: false }
+
+function readTabFilters(): Record<MainTab, TabFilterState> {
+  let stored: Partial<Record<MainTab, Partial<TabFilterState>>> = {}
+  try { stored = JSON.parse(localStorage.getItem('p4git-main-tab-filters') ?? '{}') as typeof stored } catch { /* Use defaults. */ }
+  return Object.fromEntries(allMainTabs.map((tab) => {
+    const value = stored[tab]
+    return [tab, {
+      query: typeof value?.query === 'string' ? value.query : '',
+      mode: value?.mode === 'prefix' || value?.mode === 'regex' ? value.mode : 'contains',
+      caseSensitive: value?.caseSensitive === true
+    }]
+  })) as Record<MainTab, TabFilterState>
 }
 
 function friendlyError(error: unknown): string {
@@ -262,13 +296,14 @@ export default function App(): React.JSX.Element {
   const [preferenceDraft, setPreferenceDraft] = useState({ diffPath: '', diffArguments: DEFAULT_DIFF_TOOL_ARGUMENTS, mergePath: '', mergeArguments: DEFAULT_MERGE_TOOL_ARGUMENTS, appearance: DEFAULT_APPEARANCE })
   const [revisionRequest, setRevisionRequest] = useState<{ paths: string[]; initial: string }>()
   const [lfsOpen, setLfsOpen] = useState(false)
+  const [lfsStatus, setLfsStatus] = useState<LfsStatus>()
   const [taskCenterOpen, setTaskCenterOpen] = useState(false)
   const [tasks, setTasks] = useState<TaskProgress[]>([])
-  const [mainTab, setMainTab] = useState<MainTab>('submitted')
+  const initialTabLayout = useMemo(readTabLayout, [])
+  const [visibleTabs, setVisibleTabs] = useState<MainTab[]>(initialTabLayout.visible)
+  const [mainTab, setMainTab] = useState<MainTab>(initialTabLayout.active)
   const [detailTab, setDetailTab] = useState<DetailTab>('details')
-  const [filter, setFilter] = useState('')
-  const [filterMode, setFilterMode] = useState<FilterMode>('contains')
-  const [filterCaseSensitive, setFilterCaseSensitive] = useState(false)
+  const [tabFilters, setTabFilters] = useState<Record<MainTab, TabFilterState>>(readTabFilters)
   const [advancedFilterOpen, setAdvancedFilterOpen] = useState(false)
   const [treeFilterOpen, setTreeFilterOpen] = useState(false)
   const [treeFilter, setTreeFilter] = useState('')
@@ -296,6 +331,17 @@ export default function App(): React.JSX.Element {
   const workspaceHistoryRequest = useRef(1)
   const initialized = useRef(false)
   const taskId = useRef(1)
+  const activeFilter = tabFilters[mainTab] ?? emptyTabFilter
+  const filter = activeFilter.query
+  const filterMode = activeFilter.mode
+  const filterCaseSensitive = activeFilter.caseSensitive
+  const setFilter = (query: string): void => setTabFilters((current) => ({ ...current, [mainTab]: { ...current[mainTab], query } }))
+  const setFilterMode = (mode: FilterMode): void => setTabFilters((current) => ({ ...current, [mainTab]: { ...current[mainTab], mode } }))
+  const setFilterCaseSensitive = (caseSensitive: boolean): void => setTabFilters((current) => ({ ...current, [mainTab]: { ...current[mainTab], caseSensitive } }))
+  const filterForTab = (tab: MainTab): string => {
+    const value = tabFilters[tab] ?? emptyTabFilter
+    return makeFilterExpression(value.query, value.mode, value.caseSensitive)
+  }
 
   const appendLog = useCallback((text: string, kind: LogEntry['kind'] = 'command') => {
     setLogs((current) => [...current.slice(-199), {
@@ -305,6 +351,35 @@ export default function App(): React.JSX.Element {
       kind
     }])
   }, [])
+
+  const openMainTab = useCallback((tab: MainTab) => {
+    setVisibleTabs((current) => current.includes(tab) ? current : allMainTabs.filter((candidate) => current.includes(candidate) || candidate === tab))
+    setMainTab(tab)
+  }, [])
+
+  const closeMainTab = useCallback((tab: MainTab) => {
+    setVisibleTabs((current) => {
+      if (!current.includes(tab) || current.length <= 1) return current
+      const index = current.indexOf(tab)
+      const next = current.filter((candidate) => candidate !== tab)
+      setMainTab((active) => active === tab ? next[Math.min(index, next.length - 1)] : active)
+      return next
+    })
+  }, [])
+
+  const toggleMainTab = useCallback((tab: MainTab) => {
+    if (visibleTabs.includes(tab)) closeMainTab(tab)
+    else openMainTab(tab)
+  }, [closeMainTab, openMainTab, visibleTabs])
+
+  useEffect(() => {
+    localStorage.setItem('p4git-main-tabs', JSON.stringify({ visible: visibleTabs, active: mainTab }))
+    void window.p4git.updateViewTabs(visibleTabs, mainTab)
+  }, [mainTab, visibleTabs])
+
+  useEffect(() => {
+    localStorage.setItem('p4git-main-tab-filters', JSON.stringify(tabFilters))
+  }, [tabFilters])
 
   const loadDirectory = useCallback(async (root: string, relativePath: string) => {
     const entries = await window.p4git.listDirectory(root, relativePath)
@@ -349,6 +424,7 @@ export default function App(): React.JSX.Element {
       setPendingSelection(undefined)
       setSelectedCommit(undefined)
       setFileHistoryView(undefined)
+      setLfsStatus(undefined)
       setChangelistState({ changelists: [], assignments: {}, shelves: [] })
       setEntriesByPath({})
       setDepotEntriesByPath({})
@@ -356,7 +432,6 @@ export default function App(): React.JSX.Element {
       setTreeMode('workspace')
       const initialDepotRef = summary.upstream ?? 'HEAD'
       setDepotRef(initialDepotRef)
-      setMainTab('submitted')
       await Promise.all([
         loadDirectory(summary.root, ''),
         loadTree(summary.root, initialDepotRef, ''),
@@ -367,6 +442,7 @@ export default function App(): React.JSX.Element {
       setSettings(await window.p4git.getSettings())
       setLocationDraft(summary.root)
       appendLog(`Workspace opened: ${summary.root}`, 'success')
+      void window.p4git.getLfsStatus(summary.root).then(setLfsStatus).catch(() => undefined)
     } catch (reason) {
       const message = friendlyError(reason)
       setError(message)
@@ -691,7 +767,7 @@ export default function App(): React.JSX.Element {
       setPendingSelection(undefined)
       setSelectedCommit(commits[0])
       setDetailTab('details')
-      setMainTab('history')
+      openMainTab('history')
     } catch (reason) {
       const message = friendlyError(reason)
       setError(message)
@@ -699,7 +775,7 @@ export default function App(): React.JSX.Element {
     } finally {
       setBusy(undefined)
     }
-  }, [appendLog, repository])
+  }, [appendLog, openMainTab, repository])
 
   const linkWorkspaceHistory = useCallback(async (entry: WorkspaceEntry) => {
     if (!repository) return
@@ -719,8 +795,9 @@ export default function App(): React.JSX.Element {
       : undefined)
     setSelectedCommit(undefined)
     setSelectedBranch(undefined)
+    const path = entry.path || '.'
+    setFileHistoryView({ path, commits: [], isDirectory: entry.isDirectory })
     try {
-      const path = entry.path || '.'
       const commits = await window.p4git.getFileHistory(repository.root, path)
       if (request !== workspaceHistoryRequest.current - 1) return
       setFileHistoryView({ path, commits, isDirectory: entry.isDirectory })
@@ -986,6 +1063,23 @@ export default function App(): React.JSX.Element {
     return content || 'No textual differences. The file may be binary or identical to the local workspace.'
   }, [launchConfiguredDiff, repository])
 
+  const diffCommitFileAgainstPrevious = useCallback(async (commit: CommitInfo, file: RevisionFile): Promise<string | undefined> => {
+    if (!repository) return undefined
+    const launched = await launchConfiguredDiff({
+      repoPath: repository.root,
+      filePath: file.path,
+      leftFilePath: file.oldPath ?? file.path,
+      rightFilePath: file.path,
+      left: { kind: 'parent', ref: commit.hash },
+      right: { kind: 'git', ref: commit.hash },
+      leftTitle: `${commit.shortHash} previous`,
+      rightTitle: commit.shortHash
+    })
+    if (launched) return undefined
+    const content = await window.p4git.getFileRevisionDiff(repository.root, file.path, commit.hash)
+    return content || 'No textual differences. The file may be binary or unchanged from its previous revision.'
+  }, [launchConfiguredDiff, repository])
+
   const handleHistoryContext = useCallback(async (commit: CommitInfo) => {
     if (!repository || !fileHistoryView) return
     setSelectedCommit(commit)
@@ -997,14 +1091,14 @@ export default function App(): React.JSX.Element {
     } else if (action === 'diff-head') {
       await showHistoryDiff(commit, 'HEAD')
     } else if (action === 'show-submitted') {
-      setMainTab('submitted')
+      openMainTab('submitted')
       setDetailTab('details')
     } else if (action === 'copy-hash') {
       await copyText(commit.hash)
     } else if (action === 'revert-commit') {
       await revertCommit(commit)
     }
-  }, [copyText, fileHistoryView, perform, repository, showHistoryDiff])
+  }, [copyText, fileHistoryView, openMainTab, perform, repository, showHistoryDiff])
 
   const openNewChangelist = useCallback((moveSelections?: PendingSelection[]) => {
     setChangelistEditor({ name: '', description: '', moveSelections })
@@ -1032,9 +1126,9 @@ export default function App(): React.JSX.Element {
     if (success) {
       if (next) setChangelistState(next)
       setChangelistEditor(undefined)
-      setMainTab('pending')
+      openMainTab('pending')
     }
-  }, [changelistEditor, changelistState.changelists, performGitAt, repository])
+  }, [changelistEditor, changelistState.changelists, openMainTab, performGitAt, repository])
 
   const deleteLocalChangelist = useCallback(async (changelist: LocalChangelist) => {
     if (!repository || !window.confirm(`Delete local changelist "${changelist.name}"?\n\nIts files will move to Default changelist. No file content will be deleted.`)) return
@@ -1099,8 +1193,8 @@ export default function App(): React.JSX.Element {
       changes: targetChanges
     })
     setSubmitOpen(true)
-    setMainTab('pending')
-  }, [changelistState.assignments, changelistState.changelists, commitMessage, repository])
+    openMainTab('pending')
+  }, [changelistState.assignments, changelistState.changelists, commitMessage, openMainTab, repository])
 
   const stashChanges = useCallback(async (repoPath = repository?.root, paths?: string[]) => {
     if (!repoPath) return
@@ -1215,7 +1309,9 @@ export default function App(): React.JSX.Element {
 
   const changeLfsLocks = useCallback(async (paths: string[], lock: boolean) => {
     if (!repository || !paths.length) return
-    await perform(lock ? 'lfs-lock' : 'lfs-unlock', `git lfs ${lock ? 'lock' : 'unlock'} -- ${paths.join(' ')}`, () => lock ? window.p4git.lockLfsFiles(repository.root, paths) : window.p4git.unlockLfsFiles(repository.root, paths), `${lock ? 'Locked' : 'Unlocked'} ${paths.length} file(s) with Git LFS.`)
+    let next: LfsStatus | undefined
+    await perform(lock ? 'lfs-lock' : 'lfs-unlock', `git lfs ${lock ? 'lock' : 'unlock'} -- ${paths.join(' ')}`, async () => { next = lock ? await window.p4git.lockLfsFiles(repository.root, paths) : await window.p4git.unlockLfsFiles(repository.root, paths) }, `${lock ? 'Locked' : 'Unlocked'} ${paths.length} file(s) with Git LFS.`)
+    if (next) setLfsStatus(next)
   }, [perform, repository])
 
   const revertCommit = useCallback(async (commit = selectedCommit) => {
@@ -1239,8 +1335,8 @@ export default function App(): React.JSX.Element {
       ? await loadTree(repository.root, depotRef, directory)
       : await loadDirectory(repository.root, directory)
     setSelectedEntry(rows.find((row) => row.path === entry.path) ?? entry)
-    setMainTab('files')
-  }, [depotRef, loadDirectory, loadTree, repository])
+    openMainTab('files')
+  }, [depotRef, loadDirectory, loadTree, openMainTab, repository])
 
   const getEntryRevision = useCallback(async (entry: WorkspaceEntry, source: TreeMode) => {
     if (!repository) return
@@ -1430,7 +1526,7 @@ export default function App(): React.JSX.Element {
     if (!success || !result) return
     setChangelistState(result.state)
     setSelectiveMergeEditor(undefined)
-    setMainTab('pending')
+    openMainTab('pending')
     if (result.conflicted) {
       const conflicts = await window.p4git.getConflicts(repository.root)
       setConflictsView(conflicts)
@@ -1438,7 +1534,7 @@ export default function App(): React.JSX.Element {
     } else {
       appendLog(`${result.paths.length} merged file(s) are in changelist ${result.changelist.name}; no Git commit was created.`, 'success')
     }
-  }, [appendLog, performGitAt, repository, selectiveMergeEditor])
+  }, [appendLog, openMainTab, performGitAt, repository, selectiveMergeEditor])
 
   const handleCommitContext = useCallback(async (commit: CommitInfo, selectedCommits: CommitInfo[] = [commit]) => {
     if (!repository) return
@@ -1535,13 +1631,17 @@ export default function App(): React.JSX.Element {
   }, [changelistState.changelists, openSubmitForChangelist, pendingSelection])
 
   const handleMenuAction = useCallback((action: MenuAction) => {
+    if (action.startsWith('view-')) {
+      toggleMainTab(action.slice(5) as MainTab)
+      return
+    }
     switch (action) {
       case 'open-workspace': void chooseRepository(); break
       case 'focus-filter': filterRef.current?.focus(); break
       case 'refresh': if (repository) void perform('refresh', 'git status', refresh, 'Workspace refreshed.', false); break
       case 'get-latest': void getLatest(); break
-      case 'submit': setMainTab('pending'); void openSelectedSubmit(); break
-      case 'new-changelist': setMainTab('pending'); openNewChangelist(); break
+      case 'submit': openMainTab('pending'); void openSelectedSubmit(); break
+      case 'new-changelist': openMainTab('pending'); openNewChangelist(); break
       case 'history': void showSelectedHistory(); break
       case 'checkout-file': void checkoutSelected(false); break
       case 'add-file': void stageSelected(); break
@@ -1549,11 +1649,11 @@ export default function App(): React.JSX.Element {
       case 'revert': void revertSelected(); break
       case 'diff': void showSelectedDiff(); break
       case 'timelapse': if (selectedPath) void showTimelapse(selectedPath, treeMode === 'depot' ? depotRef : 'HEAD'); break
-      case 'revgraph': setMainTab('stream'); break
+      case 'revgraph': openMainTab('stream'); break
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.7.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.8.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1574,7 +1674,7 @@ export default function App(): React.JSX.Element {
       case 'git-abort-cherry-pick': void abortGitOperation('cherry-pick'); break
       case 'git-abort-revert': void abortGitOperation('revert'); break
     }
-  }, [abortGitOperation, amendLastCommit, checkoutSelected, chooseRepository, createTagAt, deleteSelected, depotRef, fetchRemote, getLatest, mergeRef, openConflicts, openGitLab, openLfsLocks, openNewChangelist, openPreferences, openSelectedSubmit, perform, performGitAt, rebaseOnto, refresh, repository, revertSelected, selectedPath, showReflog, showSelectedDiff, showSelectedHistory, showStashes, showTimelapse, stageSelected, stashChanges, treeMode])
+  }, [abortGitOperation, amendLastCommit, checkoutSelected, chooseRepository, createTagAt, deleteSelected, depotRef, fetchRemote, getLatest, mergeRef, openConflicts, openGitLab, openLfsLocks, openMainTab, openNewChangelist, openPreferences, openSelectedSubmit, perform, performGitAt, rebaseOnto, refresh, repository, revertSelected, selectedPath, showReflog, showSelectedDiff, showSelectedHistory, showStashes, showTimelapse, stageSelected, stashChanges, toggleMainTab, treeMode])
 
   useEffect(() => window.p4git.onMenuAction(handleMenuAction), [handleMenuAction])
 
@@ -1613,7 +1713,6 @@ export default function App(): React.JSX.Element {
       if (treeMode === 'depot') await loadTree(repository.root, depotRef, path)
       else await loadDirectory(repository.root, path)
     }
-    setMainTab('files')
   }
 
   async function switchTreeMode(mode: TreeMode): Promise<void> {
@@ -1626,7 +1725,6 @@ export default function App(): React.JSX.Element {
     setExpandedPaths(new Set(['']))
     if (mode === 'depot' && !depotEntriesByPath['']) await loadTree(repository.root, depotRef, '')
     if (mode === 'workspace' && !entriesByPath['']) await loadDirectory(repository.root, '')
-    setMainTab('files')
   }
 
   async function changeDepotRef(ref: string): Promise<void> {
@@ -1679,7 +1777,7 @@ export default function App(): React.JSX.Element {
       const components = selectedDirectory.split('/').filter(Boolean)
       setExpandedPaths(new Set(['', ...components.map((_part, index) => components.slice(0, index + 1).join('/'))]))
       setSelectedEntry(undefined)
-      setMainTab('files')
+      openMainTab('files')
       setLocationDraft(target)
       const history = [target, ...(settings.locationHistory ?? []).filter((item) => item !== target)].slice(0, 20)
       await saveNavigation(settings.bookmarks ?? [], history)
@@ -1717,7 +1815,7 @@ export default function App(): React.JSX.Element {
     setAmendCommit(false)
     setSubmitOpen(false)
     setSubmitChangelist(undefined)
-    setMainTab('submitted')
+    openMainTab('submitted')
     setHistory(await window.p4git.getHistory(repository.root))
   }
 
@@ -1806,14 +1904,14 @@ export default function App(): React.JSX.Element {
         canTimelapse={Boolean(selectedPath && !selectedEntry?.isDirectory && selectedChange?.kind !== 'untracked')}
         onRefresh={() => void perform('refresh', 'git status', refresh, 'Workspace refreshed.', false)}
         onGetLatest={() => void getLatest()}
-        onSubmit={() => { setMainTab('pending'); void openSelectedSubmit() }}
+        onSubmit={() => { openMainTab('pending'); void openSelectedSubmit() }}
         onCheckout={() => void checkoutSelected(false)}
         onAdd={() => void stageSelected()}
         onDelete={() => void deleteSelected()}
         onRevert={() => void revertSelected()}
         onDiff={() => void showSelectedDiff()}
         onTimelapse={() => selectedPath && void showTimelapse(selectedPath, treeMode === 'depot' ? depotRef : 'HEAD')}
-        onRevgraph={() => setMainTab('stream')}
+        onRevgraph={() => openMainTab('stream')}
         onCancel={() => void window.p4git.cancelOperations().then((count) => appendLog(`Cancelled ${count} running Git process(es).`, 'success'))}
       />
 
@@ -1837,7 +1935,7 @@ export default function App(): React.JSX.Element {
               <button onClick={(event) => { event.stopPropagation(); void toggleTreePath('') }}>{expandedPaths.has('') ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
               {treeMode === 'depot' ? <GitBranch size={16} /> : <HardDrive size={16} />}<span>{treeMode === 'depot' ? `//${depotRef}` : repository.root}</span>
             </div>
-            {expandedPaths.has('') && <TreeChildren parent="" depth={1} entriesByPath={activeEntriesByPath} expanded={expandedPaths} currentDirectory={currentDirectory} onToggle={toggleTreePath} onSelectDirectory={selectDirectory} onSelectFile={(entry) => void linkWorkspaceHistory(entry)} onContext={(entry) => void handleEntryContext(entry, treeMode)} />}
+            {expandedPaths.has('') && <TreeChildren parent="" depth={1} source={treeMode} changes={repository.changes} locks={lfsStatus?.locks ?? []} entriesByPath={activeEntriesByPath} expanded={expandedPaths} currentDirectory={currentDirectory} onToggle={toggleTreePath} onSelectDirectory={selectDirectory} onSelectFile={(entry) => void linkWorkspaceHistory(entry)} onContext={(entry) => void handleEntryContext(entry, treeMode)} />}
           </div>
         </aside>
 
@@ -1845,18 +1943,18 @@ export default function App(): React.JSX.Element {
 
         <section className={`content-pane ${advancedFilterOpen ? 'advanced' : ''}`} style={{ gridTemplateRows: advancedFilterOpen ? `31px 28px 36px minmax(120px, 1fr) 4px 28px ${appearance.detailPaneHeight}px` : `31px 28px minmax(120px, 1fr) 4px 28px ${appearance.detailPaneHeight}px` }}>
           <div className="main-tabs">
-            {(Object.keys(tabLabels) as MainTab[]).filter((tab) => tab !== 'history' || fileHistoryView).map((tab) => <button key={tab} className={mainTab === tab ? 'active' : ''} onClick={() => setMainTab(tab)}>{(tab === 'files' || tab === 'history') && <FileText size={16} />}{tab === 'pending' && <AlertTriangle size={16} fill="#d73e45" />}{tab === 'submitted' && <span className="submitted-icon">▲</span>}{tab === 'stream' && <GitGraph size={16} />}{tab === 'workspaces' && <Monitor size={16} />}{tabLabels[tab]}{tab === 'history' && <span className="tab-close" onClick={(event) => { event.stopPropagation(); setFileHistoryView(undefined); setMainTab('files') }}>×</span>}</button>)}
+            {visibleTabs.map((tab) => <button key={tab} className={mainTab === tab ? 'active' : ''} onClick={() => setMainTab(tab)}>{(tab === 'files' || tab === 'history') && <FileText size={16} />}{tab === 'pending' && <AlertTriangle size={16} fill="#d73e45" />}{tab === 'submitted' && <span className="submitted-icon">▲</span>}{tab === 'stream' && <GitGraph size={16} />}{tab === 'workspaces' && <Monitor size={16} />}{tabLabels[tab]}{visibleTabs.length > 1 && <span className="tab-close" title={`Close ${tabLabels[tab]}`} onClick={(event) => { event.stopPropagation(); closeMainTab(tab) }}>×</span>}</button>)}
           </div>
           <div className={`filter-bar ${filter ? 'filtering' : ''} ${appliedFilterError ? 'invalid' : ''}`}><button title={advancedFilterOpen ? 'Hide filter options' : 'Show filter options'} className={advancedFilterOpen ? 'expanded' : ''} onClick={() => setAdvancedFilterOpen((open) => !open)}><ChevronRight size={15} /></button><strong>Filter:</strong><input ref={filterRef} value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Type to filter the active tab..." aria-invalid={Boolean(appliedFilterError)} /><span>{appliedFilterError ?? `${getMatchCount(mainTab, appliedFilter, activeEntries, repository.changes, submittedCommits, graph, settings, changelistState, fileHistoryView?.commits)} matches`}</span><button title="Filter options" className={advancedFilterOpen ? 'active' : ''} onClick={() => { setAdvancedFilterOpen((open) => !open); queueMicrotask(() => filterRef.current?.focus()) }}><Filter size={15} /></button><button onClick={() => void perform('refresh', 'git status', refresh, 'Workspace refreshed.', false)} title="Refresh view"><RefreshCw size={16} className={busy === 'refresh' ? 'spin' : ''} /></button></div>
           {advancedFilterOpen && <div className="advanced-filter"><label>Text <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter text or expression" /></label><label>Mode <select value={filterMode} onChange={(event) => setFilterMode(event.target.value as FilterMode)}><option value="contains">Contains</option><option value="prefix">Starts with</option><option value="regex">Regular expression</option></select></label><label className="check-filter"><input type="checkbox" checked={filterCaseSensitive} onChange={(event) => setFilterCaseSensitive(event.target.checked)} />Match case</label><button onClick={() => { setFilter(''); filterRef.current?.focus() }} disabled={!filter}>Clear filter</button><span className={appliedFilterError ? 'filter-error' : ''}>{appliedFilterError ?? 'Applied immediately to every visible field in the active tab.'}</span></div>}
 
           <div className="table-area">
-            {mainTab === 'files' && <FilesTable entries={activeEntries} changes={repository.changes} filter={appliedFilter} selected={selectedEntry?.path} source={treeMode} onSelect={(entry) => void linkWorkspaceHistory(entry)} onOpen={(entry) => entry.isDirectory ? void selectDirectory(entry.path) : (() => { const change = repository.changes.find((item) => item.path === entry.path); change ? void showDiff(change, change.staged && !change.unstaged, change.unstaged ? changelistState.assignments[change.path] : undefined) : void showPathDiff(entry.path, treeMode === 'depot' ? depotRef : repository.upstream ?? 'HEAD') })()} onContext={(entry, entries) => void handleEntryContext(entry, treeMode, entries)} />}
-            {mainTab === 'history' && fileHistoryView && <HistoryTable view={fileHistoryView} filter={appliedFilter} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setDetailTab('details') }} onOpen={(commit) => void showHistoryDiff(commit)} onContext={(commit) => void handleHistoryContext(commit)} />}
-            {mainTab === 'pending' && <PendingTable storageKey={repository.root} staged={staged} unstaged={unstaged} changelists={changelistState.changelists} assignments={changelistState.assignments} filter={appliedFilter} onSelect={(change, isStaged, changelistId) => { setSelectedEntry(undefined); setPendingSelection({ change, staged: isStaged, changelistId }); setDetailTab('details') }} onOpen={(change, isStaged, changelistId) => void showDiff(change, isStaged, changelistId)} onStage={(selections) => void moveChangesToReady(selections)} onMove={(selections, id) => void moveChangesToChangelist(selections, id)} onContext={(change, isStaged, changelistId, selections) => void handlePendingContext(change, isStaged, changelistId, selections)} onNew={() => openNewChangelist()} onGroupContext={(id, name, rows) => void handleChangelistContext(id, name, rows)} />}
-            {mainTab === 'submitted' && <SubmittedTable commits={submittedCommits} scope={fileHistoryView?.path} filter={appliedFilter} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setDetailTab('details') }} onContext={(commit, commits) => void handleCommitContext(commit, commits)} onExpand={(commit) => window.p4git.getCommitFiles(repository.root, commit.hash)} />}
-            {mainTab === 'stream' && <RevisionGraph commits={graph} branches={branches} filter={appliedFilter} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setSelectedBranch(branches.find((branch) => commit.refs.some((ref) => ref.includes(branch.name)))); setDetailTab('details') }} onContext={(commit, commits) => void handleCommitContext(commit, commits)} onBranchContext={(branch) => void handleBranchContext(branch)} newBranch={newBranch} onNewBranch={setNewBranch} onCreate={() => void createBranch()} busy={Boolean(busy)} />}
-            {mainTab === 'workspaces' && <WorkspacesTable paths={settings.recentRepositories} active={repository.root} filter={appliedFilter} onOpen={(path) => void openRepository(path)} onContext={(path) => void handleWorkspaceContext(path)} />}
+            <div className={`main-tab-panel ${mainTab === 'files' ? 'active' : ''}`}><FilesTable entries={activeEntries} changes={repository.changes} locks={lfsStatus?.locks ?? []} filter={filterForTab('files')} selected={selectedEntry?.path} source={treeMode} onSelect={(entry) => void linkWorkspaceHistory(entry)} onOpen={(entry) => entry.isDirectory ? void selectDirectory(entry.path) : (() => { const change = repository.changes.find((item) => item.path === entry.path); change ? void showDiff(change, change.staged && !change.unstaged, change.unstaged ? changelistState.assignments[change.path] : undefined) : void showPathDiff(entry.path, treeMode === 'depot' ? depotRef : repository.upstream ?? 'HEAD') })()} onContext={(entry, entries) => void handleEntryContext(entry, treeMode, entries)} /></div>
+            <div className={`main-tab-panel ${mainTab === 'history' ? 'active' : ''}`}>{fileHistoryView ? <HistoryTable view={fileHistoryView} filter={filterForTab('history')} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setDetailTab('details') }} onOpen={(commit) => void showHistoryDiff(commit)} onContext={(commit) => void handleHistoryContext(commit)} /> : <EmptyTable text="Select a file or folder in Depot/Workspace to load its History." />}</div>
+            <div className={`main-tab-panel ${mainTab === 'pending' ? 'active' : ''}`}><PendingTable storageKey={repository.root} staged={staged} unstaged={unstaged} changelists={changelistState.changelists} assignments={changelistState.assignments} filter={filterForTab('pending')} onSelect={(change, isStaged, changelistId) => { setSelectedEntry(undefined); setPendingSelection({ change, staged: isStaged, changelistId }); setDetailTab('details') }} onOpen={(change, isStaged, changelistId) => void showDiff(change, isStaged, changelistId)} onStage={(selections) => void moveChangesToReady(selections)} onMove={(selections, id) => void moveChangesToChangelist(selections, id)} onContext={(change, isStaged, changelistId, selections) => void handlePendingContext(change, isStaged, changelistId, selections)} onNew={() => openNewChangelist()} onGroupContext={(id, name, rows) => void handleChangelistContext(id, name, rows)} /></div>
+            <div className={`main-tab-panel ${mainTab === 'submitted' ? 'active' : ''}`}><SubmittedTable commits={submittedCommits} scope={fileHistoryView?.path} filter={filterForTab('submitted')} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setDetailTab('details') }} onContext={(commit, commits) => void handleCommitContext(commit, commits)} onExpand={(commit) => window.p4git.getCommitFiles(repository.root, commit.hash)} /></div>
+            <div className={`main-tab-panel ${mainTab === 'stream' ? 'active' : ''}`}><RevisionGraph commits={graph} branches={branches} filter={filterForTab('stream')} selected={selectedCommit?.hash} onSelect={(commit) => { setSelectedCommit(commit); setSelectedBranch(branches.find((branch) => commit.refs.some((ref) => ref.includes(branch.name)))); setDetailTab('details') }} onContext={(commit, commits) => void handleCommitContext(commit, commits)} onBranchContext={(branch) => void handleBranchContext(branch)} newBranch={newBranch} onNewBranch={setNewBranch} onCreate={() => void createBranch()} busy={Boolean(busy)} /></div>
+            <div className={`main-tab-panel ${mainTab === 'workspaces' ? 'active' : ''}`}><WorkspacesTable paths={settings.recentRepositories} active={repository.root} filter={filterForTab('workspaces')} onOpen={(path) => void openRepository(path)} onContext={(path) => void handleWorkspaceContext(path)} /></div>
           </div>
 
           <div className="pane-splitter horizontal" title="Drag to resize Details pane" onPointerDown={(event) => resizeLayout('detailPaneHeight', event)} />
@@ -1889,11 +1987,16 @@ export default function App(): React.JSX.Element {
       {remotesOpen && <RemotesDialog repoPath={repository.root} onClose={() => setRemotesOpen(false)} />}
       {pushOpen && <PushDialog repoPath={repository.root} branch={repository.branch} onClose={() => setPushOpen(false)} onPushed={async () => { setPushOpen(false); await refresh() }} />}
       {shelvesOpen && <ShelvesDialog repoPath={repository.root} shelves={changelistState.shelves} onClose={() => setShelvesOpen(false)} onUnshelved={async (state) => { setChangelistState(state); setShelvesOpen(false); await refresh() }} />}
-      {branchComparison && <BranchComparisonDialog repoPath={repository.root} value={branchComparison} onClose={() => setBranchComparison(undefined)} onMerge={(commits) => openSelectiveMerge(commits, branchComparison.selected)} onDiff={diffCommitFileAgainstWorkspace} />}
+      {branchComparison && <BranchComparisonDialog repoPath={repository.root} value={branchComparison} onClose={() => setBranchComparison(undefined)} onMerge={(commits) => openSelectiveMerge(commits, branchComparison.selected)} onDiff={diffCommitFileAgainstWorkspace} onDiffPrevious={diffCommitFileAgainstPrevious} />}
       {commitDetailsView && <CommitDetailsDialog title="Submitted Change Details" value={commitDetailsView} onClose={() => setCommitDetailsView(undefined)} onFileContext={async (file) => {
         const action = await window.p4git.showContextMenu({ kind: 'compare-file' })
         if (action === 'copy-path') await copyText(file.path)
-        else if (action === 'diff-local') {
+        else if (action === 'diff-previous') {
+          try {
+            const content = await diffCommitFileAgainstPrevious(commitDetailsView, file)
+            if (content !== undefined) setCommitDetailsDiff({ title: `${file.path} — Previous Revision vs ${commitDetailsView.shortHash}`, content })
+          } catch (reason) { setError(friendlyError(reason)) }
+        } else if (action === 'diff-local') {
           try {
             const content = await diffCommitFileAgainstWorkspace(commitDetailsView, file)
             if (content !== undefined) setCommitDetailsDiff({ title: `${file.path} — ${commitDetailsView.shortHash} vs Local Workspace`, content })
@@ -1904,7 +2007,7 @@ export default function App(): React.JSX.Element {
       {pendingDiffView && <PendingDiffDialog value={pendingDiffView} onChange={setPendingDiffView} onClose={() => setPendingDiffView(undefined)} />}
       {selectiveMergeEditor && <SelectiveMergeDialog value={selectiveMergeEditor} onChange={setSelectiveMergeEditor} onClose={() => setSelectiveMergeEditor(undefined)} onMerge={() => void runSelectiveMerge()} busy={busy === 'selective-merge'} currentBranch={repository.branch} />}
       {revisionRequest && <GetRevisionDialog repoPath={repository.root} paths={revisionRequest.paths} initial={revisionRequest.initial} suggestions={[repository.branch, repository.upstream ?? '', 'HEAD', ...branches.map((branch) => branch.name), ...history.slice(0, 30).map((commit) => commit.hash)].filter(Boolean)} onClose={() => setRevisionRequest(undefined)} onApply={async (revision, paths) => { await perform('get-revision', `git restore --source=${revision.hash} --worktree -- ${paths.join(' ')}`, () => window.p4git.restoreFromRef(repository.root, revision.hash, paths), `Restored ${paths.length} target(s) from ${revision.shortHash}.`) }} />}
-      {lfsOpen && <LfsLocksDialog repoPath={repository.root} onClose={() => setLfsOpen(false)} />}
+      {lfsOpen && <LfsLocksDialog repoPath={repository.root} onClose={() => setLfsOpen(false)} onStatus={setLfsStatus} />}
       {taskCenterOpen && <TaskCenter tasks={tasks} onClose={() => setTaskCenterOpen(false)} onCancel={() => void window.p4git.cancelOperations().then((count) => appendLog(`Cancellation requested for ${count} process(es).`, 'success'))} onClear={() => setTasks((current) => current.filter((task) => task.state === 'running'))} />}
       {error && <ErrorToast message={error} close={() => setError(undefined)} />}
     </main>
@@ -2002,9 +2105,12 @@ function useResizableColumns(id: string, defaults: number[]): { style: React.CSS
   return { style, grip }
 }
 
-function TreeChildren({ parent, depth, entriesByPath, expanded, currentDirectory, onToggle, onSelectDirectory, onSelectFile, onContext }: {
+function TreeChildren({ parent, depth, source, changes, locks, entriesByPath, expanded, currentDirectory, onToggle, onSelectDirectory, onSelectFile, onContext }: {
   parent: string
   depth: number
+  source: TreeMode
+  changes: FileChange[]
+  locks: LfsStatus['locks']
   entriesByPath: Record<string, WorkspaceEntry[]>
   expanded: Set<string>
   currentDirectory: string
@@ -2013,17 +2119,26 @@ function TreeChildren({ parent, depth, entriesByPath, expanded, currentDirectory
   onSelectFile: (entry: WorkspaceEntry) => void
   onContext: (entry: WorkspaceEntry) => void
 }): React.JSX.Element {
-  return <>{(entriesByPath[parent] ?? []).map((entry) => <div key={entry.path}>
+  return <>{(entriesByPath[parent] ?? []).map((entry) => { const change = changes.find((item) => item.path === entry.path || item.oldPath === entry.path); const lock = locks.find((item) => item.path === entry.path); return <div key={entry.path}>
     <div className={`tree-row ${currentDirectory === entry.path ? 'selected' : ''}`} style={{ paddingLeft: 5 + depth * 18 }} onDoubleClick={() => entry.isDirectory && void onToggle(entry.path)} onClick={() => entry.isDirectory ? void onSelectDirectory(entry.path) : onSelectFile(entry)} onContextMenu={(event) => { event.preventDefault(); onContext(entry) }}>
       {entry.isDirectory ? <button onClick={(event) => { event.stopPropagation(); void onToggle(entry.path) }}>{expanded.has(entry.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button> : <span className="tree-indent" />}
-      {entry.isDirectory ? <Folder size={16} fill="#d8b15c" /> : <File size={14} />}
+      <P4VEntryIcon entry={entry} source={source} change={change} lock={lock} />
       <span>{entry.name}</span>
     </div>
-    {entry.isDirectory && expanded.has(entry.path) && <TreeChildren parent={entry.path} depth={depth + 1} entriesByPath={entriesByPath} expanded={expanded} currentDirectory={currentDirectory} onToggle={onToggle} onSelectDirectory={onSelectDirectory} onSelectFile={onSelectFile} onContext={onContext} />}
-  </div>)}</>
+    {entry.isDirectory && expanded.has(entry.path) && <TreeChildren parent={entry.path} depth={depth + 1} source={source} changes={changes} locks={locks} entriesByPath={entriesByPath} expanded={expanded} currentDirectory={currentDirectory} onToggle={onToggle} onSelectDirectory={onSelectDirectory} onSelectFile={onSelectFile} onContext={onContext} />}
+  </div> })}</>
 }
 
-function FilesTable({ entries, changes, filter, selected, source, onSelect, onOpen, onContext }: { entries: WorkspaceEntry[]; changes: FileChange[]; filter: string; selected?: string; source: TreeMode; onSelect: (entry: WorkspaceEntry) => void; onOpen: (entry: WorkspaceEntry) => void; onContext: (entry: WorkspaceEntry, entries: WorkspaceEntry[]) => void }): React.JSX.Element {
+function P4VEntryIcon({ entry, source, change, lock }: { entry: WorkspaceEntry; source: TreeMode; change?: FileChange; lock?: LfsStatus['locks'][number] }): React.JSX.Element {
+  const visual = p4vEntryVisual(entry, source, change, lock)
+  const glyph: Record<string, string> = { synced: '✓', previous: '↓', 'workspace-only': 'W', differs: '≠', add: '+', edit: '✓', delete: '×', move: '↔', copy: '⇥', resolve: '!', 'lock-mine': '●', 'lock-other': '●' }
+  return <span className={`p4v-entry-icon ${visual.base}`} title={visual.tooltip}>
+    {entry.isDirectory ? <Folder size={16} /> : <FileText size={15} />}
+    {visual.badges.map((badge, index) => <i key={`${badge.kind}-${index}`} className={`p4v-file-badge ${badge.kind} badge-${index}`} title={badge.label}>{glyph[badge.kind]}</i>)}
+  </span>
+}
+
+function FilesTable({ entries, changes, locks, filter, selected, source, onSelect, onOpen, onContext }: { entries: WorkspaceEntry[]; changes: FileChange[]; locks: LfsStatus['locks']; filter: string; selected?: string; source: TreeMode; onSelect: (entry: WorkspaceEntry) => void; onOpen: (entry: WorkspaceEntry) => void; onContext: (entry: WorkspaceEntry, entries: WorkspaceEntry[]) => void }): React.JSX.Element {
   const [sort, setSort] = useState<'name' | 'type' | 'action' | 'path'>('name')
   const describe = (entry: WorkspaceEntry): { type: string; action: string; path: string } => {
     const change = changes.find((item) => item.path === entry.path)
@@ -2036,7 +2151,7 @@ function FilesTable({ entries, changes, filter, selected, source, onSelect, onOp
   })
   const selection = useTableSelection(rows.map((entry) => entry.path))
   const columns = useResizableColumns('files', [300, 100, 110, 300])
-  return <div className="classic-table files-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable" style={columns.style}><button onClick={() => setSort('name')}>Name{columns.grip(0)}</button><button onClick={() => setSort('type')}>Type{columns.grip(1)}</button><button onClick={() => setSort('action')}>Action{columns.grip(2)}</button><button onClick={() => setSort('path')}>Path{columns.grip(3)}</button></div>{rows.map((entry) => { const metadata = describe(entry); return <button style={columns.style} key={entry.path} className={`table-row ${selection.selected.has(entry.path) || (!selection.selected.size && selected === entry.path) ? 'selected' : ''}`} onClick={(event) => { selection.click(entry.path, event); onSelect(entry) }} onDoubleClick={() => onOpen(entry)} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(entry.path); onContext(entry, rows.filter((row) => keys.has(row.path))) }}><span className="file-name" title={entry.path}>{entry.isDirectory ? <Folder size={16} fill="#d8b15c" /> : <File size={15} />}{entry.name}</span><span>{metadata.type}</span><span>{metadata.action}</span><span title={entry.path}>{metadata.path}</span></button> })}{rows.length === 0 && <EmptyTable text="No files match the current filter." />}</div>
+  return <div className="classic-table files-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable" style={columns.style}><button onClick={() => setSort('name')}>Name{columns.grip(0)}</button><button onClick={() => setSort('type')}>Type{columns.grip(1)}</button><button onClick={() => setSort('action')}>Action{columns.grip(2)}</button><button onClick={() => setSort('path')}>Path{columns.grip(3)}</button></div>{rows.map((entry) => { const metadata = describe(entry); const change = changes.find((item) => item.path === entry.path || item.oldPath === entry.path); const lock = locks.find((item) => item.path === entry.path); return <button style={columns.style} key={entry.path} className={`table-row ${selection.selected.has(entry.path) || (!selection.selected.size && selected === entry.path) ? 'selected' : ''}`} onClick={(event) => { selection.click(entry.path, event); onSelect(entry) }} onDoubleClick={() => onOpen(entry)} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(entry.path); onContext(entry, rows.filter((row) => keys.has(row.path))) }}><span className="file-name" title={p4vEntryVisual(entry, source, change, lock).tooltip}><P4VEntryIcon entry={entry} source={source} change={change} lock={lock} />{entry.name}</span><span>{metadata.type}</span><span>{metadata.action}</span><span title={entry.path}>{metadata.path}</span></button> })}{rows.length === 0 && <EmptyTable text="No files match the current filter." />}</div>
 }
 
 function PendingTable({ storageKey, staged, unstaged, changelists, assignments, filter, onSelect, onOpen, onStage, onMove, onContext, onNew, onGroupContext }: {
@@ -2410,16 +2525,17 @@ function GetRevisionDialog({ repoPath, paths, initial, suggestions, onClose, onA
   return <div className="modal-backdrop"><section className="revision-dialog"><div className="modal-title"><Download size={16} /><strong>Get Revision</strong><button onClick={onClose}><X size={16} /></button></div><div className="revision-query"><label>Revision, branch, tag, hash, or date<input autoFocus list="revision-suggestions" value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void preview() }} /><datalist id="revision-suggestions">{suggestions.map((item) => <option key={item} value={item} />)}</datalist></label><button onClick={() => void preview()} disabled={busy || !input.trim()}>{busy && <LoaderCircle size={13} className="spin" />}Preview</button></div>{resolved && <div className="revision-summary"><code>{resolved.shortHash}</code><strong>{resolved.subject}</strong><span>{resolved.author} · {formatDate(resolved.date)}</span><em>{resolved.refs.join(' · ') || resolved.input}</em></div>}<div className="revision-targets"><strong>Workspace targets</strong>{paths.map((path) => <label title={path} key={path}><input type="checkbox" checked={selectedPaths.has(path)} onChange={() => toggle(path)} /><span>{path === '.' ? 'Entire workspace tree' : path}</span></label>)}</div><div className="revision-preview"><strong>Files changed by the selected commit ({resolved?.files.length ?? 0})</strong>{resolved?.files.map((file) => <div title={file.path} key={`${file.kind}-${file.path}`}><i className="change-mark">{file.kind.slice(0, 1)}</i><span>{file.path}</span></div>)}{resolved && !resolved.files.length && <EmptyTable text="This commit has no file changes." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><span className="modal-hint">Selected workspace files are replaced from this commit. Uncommitted tracked content may be overwritten.</span><button onClick={onClose}>Cancel</button><button className="primary-classic" disabled={!resolved || !selectedPaths.size || busy} onClick={async () => { if (!resolved || !window.confirm(`Get ${selectedPaths.size} target(s) from ${resolved.shortHash}?`)) return; setBusy(true); try { await onApply(resolved, [...selectedPaths]); onClose() } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}>Get Revision</button></div></section></div>
 }
 
-function LfsLocksDialog({ repoPath, onClose }: { repoPath: string; onClose: () => void }): React.JSX.Element {
+function LfsLocksDialog({ repoPath, onClose, onStatus }: { repoPath: string; onClose: () => void; onStatus: (status: LfsStatus) => void }): React.JSX.Element {
   const [status, setStatus] = useState<LfsStatus>()
   const [path, setPath] = useState('')
   const [selected, setSelected] = useState(new Set<string>())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const load = async (): Promise<void> => { setBusy(true); try { setStatus(await window.p4git.getLfsStatus(repoPath)) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }
+  const update = (next: LfsStatus): void => { setStatus(next); onStatus(next) }
+  const load = async (): Promise<void> => { setBusy(true); try { update(await window.p4git.getLfsStatus(repoPath)) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }
   useEffect(() => { void load() }, [repoPath])
-  const unlock = async (force = false): Promise<void> => { if (!selected.size) return; setBusy(true); setError(''); try { setStatus(await window.p4git.unlockLfsFiles(repoPath, [...selected], force)); setSelected(new Set()) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }
-  return <div className="modal-backdrop"><section className="lfs-dialog"><div className="modal-title"><Lock size={16} /><strong>Git LFS Locks</strong><button onClick={onClose}><X size={16} /></button></div><div className="lfs-status"><span className={status?.installed && !status.error ? 'ok' : 'warning'}>{status?.version ?? 'Checking Git LFS...'}</span><span>{status?.repositoryEnabled ? 'LFS filters configured in this repository' : 'No local LFS filter configuration detected'}</span><button onClick={() => void load()} disabled={busy}><RefreshCw size={13} />Refresh</button></div>{status?.error && <div className="modal-warning">{status.error}</div>}<div className="lfs-new"><input value={path} onChange={(event) => setPath(event.target.value)} placeholder="Relative file path to lock" /><button disabled={busy || !status?.installed || !path.trim()} onClick={async () => { setBusy(true); setError(''); try { setStatus(await window.p4git.lockLfsFiles(repoPath, [path.trim()])); setPath('') } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}><Lock size={13} />Lock</button></div><div className="lfs-list"><div className="lfs-head"><span /><span>Path</span><span>Owner</span><span>Locked</span></div>{status?.locks.map((item) => <label className={`lfs-row ${selected.has(item.path) ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={selected.has(item.path)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(item.path)) next.delete(item.path); else next.add(item.path); return next })} /><span title={item.path}>{item.path}</span><span>{item.owner}{item.mine ? ' (you)' : ''}</span><span>{item.lockedAt ? formatDate(item.lockedAt) : ''}</span></label>)}{status && !status.locks.length && <EmptyTable text="No Git LFS locks were reported by the remote." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><span>{selected.size} selected</span><button disabled={!selected.size || busy} onClick={() => void unlock(false)}><Unlock size={13} />Unlock Mine</button><button disabled={!selected.size || busy} onClick={() => void unlock(true)}>Force Unlock...</button><button onClick={onClose}>Close</button></div></section></div>
+  const unlock = async (force = false): Promise<void> => { if (!selected.size) return; setBusy(true); setError(''); try { update(await window.p4git.unlockLfsFiles(repoPath, [...selected], force)); setSelected(new Set()) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }
+  return <div className="modal-backdrop"><section className="lfs-dialog"><div className="modal-title"><Lock size={16} /><strong>Git LFS Locks</strong><button onClick={onClose}><X size={16} /></button></div><div className="lfs-status"><span className={status?.installed && !status.error ? 'ok' : 'warning'}>{status?.version ?? 'Checking Git LFS...'}</span><span>{status?.repositoryEnabled ? 'LFS filters configured in this repository' : 'No local LFS filter configuration detected'}</span><button onClick={() => void load()} disabled={busy}><RefreshCw size={13} />Refresh</button></div>{status?.error && <div className="modal-warning">{status.error}</div>}<div className="lfs-new"><input value={path} onChange={(event) => setPath(event.target.value)} placeholder="Relative file path to lock" /><button disabled={busy || !status?.installed || !path.trim()} onClick={async () => { setBusy(true); setError(''); try { update(await window.p4git.lockLfsFiles(repoPath, [path.trim()])); setPath('') } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}><Lock size={13} />Lock</button></div><div className="lfs-list"><div className="lfs-head"><span /><span>Path</span><span>Owner</span><span>Locked</span></div>{status?.locks.map((item) => <label className={`lfs-row ${selected.has(item.path) ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={selected.has(item.path)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(item.path)) next.delete(item.path); else next.add(item.path); return next })} /><span title={item.path}>{item.path}</span><span>{item.owner}{item.mine ? ' (you)' : ''}</span><span>{item.lockedAt ? formatDate(item.lockedAt) : ''}</span></label>)}{status && !status.locks.length && <EmptyTable text="No Git LFS locks were reported by the remote." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><span>{selected.size} selected</span><button disabled={!selected.size || busy} onClick={() => void unlock(false)}><Unlock size={13} />Unlock Mine</button><button disabled={!selected.size || busy} onClick={() => void unlock(true)}>Force Unlock...</button><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function TaskCenter({ tasks, onClose, onCancel, onClear }: { tasks: TaskProgress[]; onClose: () => void; onCancel: () => void; onClear: () => void }): React.JSX.Element {
@@ -2476,7 +2592,7 @@ function ShelvesDialog({ repoPath, shelves, onClose, onUnshelved }: { repoPath: 
   return <div className="modal-backdrop"><section className="git-list-dialog"><div className="modal-title"><FileText size={16} /><strong>Local Shelves</strong><button onClick={onClose}><X size={16} /></button></div><div className="shelves-list">{shelves.map((shelf) => <div key={shelf.hash}><strong>{shelf.name}</strong><span>{shelf.description || `${shelf.paths.length} files`}</span><time>{formatDate(shelf.createdAt)}</time><button disabled={busy} onClick={async () => { if (!window.confirm(`Unshelve ${shelf.name} into the current workspace?`)) return; setBusy(true); try { await onUnshelved(await window.p4git.unshelve(repoPath, shelf.hash)) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}>Unshelve</button></div>)}{!shelves.length && <EmptyTable text="No local shelves. Right-click a changelist to Shelve it." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
 }
 
-function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff }: { repoPath: string; value: BranchComparison; onClose: () => void; onMerge: (commits: CommitInfo[]) => Promise<boolean>; onDiff: (commit: CommitInfo, file: RevisionFile) => Promise<string | undefined> }): React.JSX.Element {
+function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff, onDiffPrevious }: { repoPath: string; value: BranchComparison; onClose: () => void; onMerge: (commits: CommitInfo[]) => Promise<boolean>; onDiff: (commit: CommitInfo, file: RevisionFile) => Promise<string | undefined>; onDiffPrevious: (commit: CommitInfo, file: RevisionFile) => Promise<string | undefined> }): React.JSX.Element {
   const selection = useTableSelection(value.incoming.map((commit) => commit.hash))
   const [busy, setBusy] = useState(false)
   const [details, setDetails] = useState<CommitDetails>()
@@ -2505,7 +2621,10 @@ function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff }: {
     {details && <CommitDetailsDialog value={details} onClose={() => setDetails(undefined)} onFileContext={async (file) => {
       const action = await window.p4git.showContextMenu({ kind: 'compare-file' })
       if (action === 'copy-path') await navigator.clipboard.writeText(file.path)
-      else if (action === 'diff-local') {
+      else if (action === 'diff-previous') {
+        try { const content = await onDiffPrevious(details, file); if (content !== undefined) setDiffView({ title: `${file.path} — Previous Revision vs ${details.shortHash}`, content }) }
+        catch (reason) { setError(friendlyError(reason)) }
+      } else if (action === 'diff-local') {
         try { const content = await onDiff(details, file); if (content !== undefined) setDiffView({ title: `${file.path} — ${details.shortHash} vs Local Workspace`, content }) }
         catch (reason) { setError(friendlyError(reason)) }
       }
@@ -2515,7 +2634,7 @@ function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff }: {
 }
 
 function CommitDetailsDialog({ value, title = 'Commit Details', onClose, onFileContext }: { value: CommitDetails; title?: string; onClose: () => void; onFileContext: (file: RevisionFile) => void }): React.JSX.Element {
-  return <div className="modal-backdrop nested-modal"><section className="commit-details-dialog"><div className="modal-title"><GitCommit size={16} /><strong>{title} — {value.shortHash}</strong><button onClick={onClose}><X size={16} /></button></div><div className="commit-details-summary"><strong>Change</strong><code>{value.shortHash}</code><strong>Commit</strong><code>{value.hash}</code><strong>Submitted by</strong><span>{value.author} &lt;{value.email}&gt;</span><strong>Date</strong><span>{formatDate(value.date)}</span><strong>Parents</strong><span>{value.parents.join(', ') || 'Root commit'}</span></div><pre className="commit-message">{value.message}</pre><div className="commit-files"><div className="commit-file-head"><span>Action</span><span>File</span><span>Previous path</span></div>{value.files.map((file) => <button key={`${file.kind}-${file.oldPath ?? ''}-${file.path}`} onContextMenu={(event) => { event.preventDefault(); onFileContext(file) }}><span className="commit-file-status"><i className={`change-mark ${file.kind === 'A' ? 'added' : file.kind === 'D' ? 'deleted' : 'modified'}`}>{file.kind}</i>{revisionFileLabel(file.kind)}</span><span title={file.path}>{file.path}</span><span title={file.oldPath}>{file.oldPath ?? ''}</span></button>)}{!value.files.length && <EmptyTable text="This commit has no changed files." />}</div><div className="modal-actions"><span>Right-click a file to Diff it against the local workspace or copy its path.</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
+  return <div className="modal-backdrop nested-modal"><section className="commit-details-dialog"><div className="modal-title"><GitCommit size={16} /><strong>{title} — {value.shortHash}</strong><button onClick={onClose}><X size={16} /></button></div><div className="commit-details-summary"><strong>Change</strong><code>{value.shortHash}</code><strong>Commit</strong><code>{value.hash}</code><strong>Submitted by</strong><span>{value.author} &lt;{value.email}&gt;</span><strong>Date</strong><span>{formatDate(value.date)}</span><strong>Parents</strong><span>{value.parents.join(', ') || 'Root commit'}</span></div><pre className="commit-message">{value.message}</pre><div className="commit-files"><div className="commit-file-head"><span>Action</span><span>File</span><span>Previous path</span></div>{value.files.map((file) => <button key={`${file.kind}-${file.oldPath ?? ''}-${file.path}`} onContextMenu={(event) => { event.preventDefault(); onFileContext(file) }}><span className="commit-file-status"><i className={`change-mark ${file.kind === 'A' ? 'added' : file.kind === 'D' ? 'deleted' : 'modified'}`}>{file.kind}</i>{revisionFileLabel(file.kind)}</span><span title={file.path}>{file.path}</span><span title={file.oldPath}>{file.oldPath ?? ''}</span></button>)}{!value.files.length && <EmptyTable text="This commit has no changed files." />}</div><div className="modal-actions"><span>Right-click a file to Diff against its previous revision or local Workspace, or copy its path.</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function TextDiffDialog({ title, content, onClose }: { title: string; content: string; onClose: () => void }): React.JSX.Element {

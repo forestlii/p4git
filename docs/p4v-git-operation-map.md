@@ -13,7 +13,8 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | P4V concept or action | P4Git / Git strategy | Status |
 |---|---|---|
 | Depot | Committed tree from a selected upstream, `HEAD`, local branch, or remote branch | Implemented |
-| Workspace | Git working tree on disk, including untracked files | Implemented |
+| Workspace | Git working tree on disk, including untracked files and pending deleted-file placeholders | Implemented |
+| File icons and badges | P4V-style Depot/Workspace objects plus synced/previous/local/diff/action/resolve/LFS-lock overlays | Implemented with Git semantics |
 | Refresh | Reload status, current tree, commit history, and branches | Implemented |
 | Get Latest | Top level fetches and fast-forwards safely, prompting for Merge/Rebase when diverged; Depot paths restore from the selected ref | Implemented |
 | Checkout / Open for edit | `git add` an existing edit; restore and stage a Depot revision; clean files require no lock | Implemented, non-locking |
@@ -29,10 +30,11 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
 | Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |
 | Submit | Create a local commit from the Git index without automatic Push | Implemented |
-| Submitted | Git log with expandable files, P4V-style commit details, local-file diff, hash copy, and safe `git revert` | Implemented |
+| Submitted | Git log with expandable files, P4V-style commit details, previous/local file diffs, hash copy, and safe `git revert` | Implemented |
 | Jobs | GitLab Issues | Implemented when a GitLab project is configured |
 | File / folder History | Workspace-selection-linked History and Submitted views backed by Git log, revision restore, and Previous/HEAD diff | Implemented |
 | View filters | Multi-field Contains/Starts-with/Regex filters with case matching and validation | Implemented |
+| View-managed tabs | Closable main tabs restored through checked View-menu entries with persistent state | Implemented |
 | Workspaces | Recently opened local Git repositories | Implemented |
 | Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more | Implemented |
 | Log | Operation intent, success, and error output with a native Clear action | Implemented |

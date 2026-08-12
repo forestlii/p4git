@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.7.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.8.0-0c8b87)
 
 ## Highlights
 
@@ -16,14 +16,14 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 |---|---|
 | P4V layout | Native menu, large action toolbar, Workspace tree, tabbed tables, details, Log, and status bar |
 | Depot | Browse the committed tree of an upstream, HEAD, local branch, or remote branch |
-| Workspace | Browse an existing Git repository as a collapsible workspace tree and return to recent workspaces |
+| Workspace | Browse every local file with P4V-style sync, action, conflict, and LFS-lock badges |
 | Changelists | Create persistent local named changelists, move files in batches, and preserve each group's expanded/collapsed state |
 | Shelve | Store a changelist as a local Git stash and restore its file assignments on Unshelve |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
 | External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
 | Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
-| Submitted | Browse path-linked Git commits and open P4V-style submitted-change details with changed-file actions |
+| Submitted | Browse path-linked commits; detail files compare against their previous revision or local Workspace |
 | Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |
 | Selective branch merge | Inspect commit details and changed files, then apply selected commits into a new local Changelist without creating a Git commit |
 | Resolve | Resolve individual conflict blocks, edit the merged result, choose whole-file sides, or launch a configured external 3-way merge tool |
@@ -32,7 +32,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Custom workspace | Drag pane dividers and file columns; select classic/light/dark themes, density, text size, and toolbar labels |
 | Task progress | See immediate Fetch activity in the footer and inspect/cancel running Git work in the task center |
 | GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
-| Navigation | Editable locations, linked Workspace/History/Submitted selection, functional per-field filters, bookmarks, and sortable columns |
+| Navigation | Closable View-managed tabs, linked Workspace/History/Submitted selection, persistent per-tab filters, bookmarks, and sortable columns |
 | Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
 | Push / Remotes | Manage remotes, select a target ref, and preview outgoing commits before Push |
 | Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |
@@ -99,7 +99,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.7.0** completes another P4V workflow pass: safe deletion confirmation when reverting added files, submitted-change details, persistent Changelist expansion, complete branch-switch refresh, Workspace-linked History/Submitted views, and functional multi-field filtering.
+Version **0.8.0** aligns file-state badges and tab management with P4V, adds previous-revision Diff inside Submitted details, and keeps Submitted path filtering in place without unexpected tab switches.
 
 ## License
 

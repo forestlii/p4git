@@ -16,7 +16,7 @@ P4Git deliberately follows the P4V desktop structure instead of a conventional G
 
 **Timelapse** uses Git blame for line-level history. **Revgraph** opens a **Stream Graph** rendered from real commit-parent relationships. **Cancel** is enabled while a Git command is running and terminates the process tree started by P4Git.
 
-The location field is editable and navigates on Enter; adjacent controls expose location history and bookmarks. Use the Workspace selector for recent repositories, click column headings to sort, and use the separate tree and table filters to narrow views.
+The location field is editable and navigates on Enter; adjacent controls expose location history and bookmarks. Use the Workspace selector for recent repositories, click column headings to sort, and use the separate tree and table filters to narrow views. Files, History, Pending, Submitted, Stream Graph, and Workspaces can all be closed; checked entries under **View** restore them. P4Git remembers visible and active tabs, per-tab filters, scroll positions, and mounted view state. The last visible tab cannot be closed.
 
 ## Git Mapping
 
@@ -48,9 +48,11 @@ P4V defines Depot as the server-side version repository and Workspace as the loc
 - The Depot selector changes the Git ref being browsed. Depot context menus provide Get Latest Revision, Checkout, Diff, File History, Time-lapse, and Show in Workspace Tree.
 - Workspace context menus provide Checkout, Add, Delete, Revert, Diff, File History, Time-lapse, Explorer reveal, and Show in Depot Tree.
 
+The trees follow P4V's object-and-badge model: Depot folders are blue, Workspace folders are yellow, and files can carry more than one status badge. The badges distinguish synced-to-head, an older upstream revision, Workspace-only content, unstaged differences, your add/edit/delete/move/copy actions, files needing Resolve, and Git LFS locks owned by you or another user. Hover an icon for its full status. Red action badges describe your pending operations; P4Git does not fabricate other-user Perforce checkout state that Git cannot provide.
+
 ## Workspace and Files
 
-Expand folders in the left **Workspace** tree and select a folder to display its children in **Files**. Double-click a folder to open it. A file that has a Git change shows its action in the table; double-clicking that changed file opens its diff. Selecting a Workspace file or folder also loads that path into **History** and scopes **Submitted** to commits that touched it. Close the History tab to return Submitted to the repository-wide log.
+Expand folders in the left **Workspace** tree and select a folder to display its children in **Files**. Double-click a folder to open it. A file that has a Git change shows its action in the table; double-clicking that changed file opens its diff. Selecting a Workspace file or folder immediately scopes **History** and **Submitted** to commits that touched that path, without changing the active main tab. Submitted clears stale rows while the new query runs and stays empty when the path has no commits. Select the Workspace root to return to the repository-wide log.
 
 The location bar and bottom status bar always show which local directory is being viewed. The `.git` administration directory is never exposed in the tree.
 
@@ -103,7 +105,7 @@ Conflicted files disable submission. The result is a local Git commit; it is not
 
 The **Submitted** table shows up to 100 recent Git commits using P4V-style columns: Change, Date Submitted, Submitted By, and Description. Selecting a row displays its full hash, author, date, and subject in **Details**.
 
-The disclosure arrow expands a commit's changed files in place. **View Details...** opens a P4V-style window with the complete description, author, date, parents, and changed-file statuses. Right-click a file in that window to compare the submitted version with the local Workspace copy (using the configured external Diff tool when available) or copy its path. Other context actions expose the full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
+The disclosure arrow expands a commit's changed files in place. **View Details...** opens a P4V-style window with the complete description, author, date, parents, and changed-file statuses. Right-click a file in that window to compare it with its previous revision or the local Workspace copy (using the configured external Diff tool when available), or copy its path. Add/delete and rename comparisons use empty or old-path sources as appropriate. Other context actions expose the full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
 
 ## History
 

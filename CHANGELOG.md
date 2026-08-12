@@ -2,6 +2,24 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.8.0 — 2026-08-12
+
+### English
+
+- Submitted-change detail files now offer **Diff Against Previous Revision** as well as local Workspace comparison, including rename-aware external Diff inputs.
+- Depot and Workspace trees now use P4V-style blue/yellow object icons and composable file badges for synced, previous, Workspace-only, differs, add/edit/delete/move/copy, resolve, and Git LFS lock states.
+- Workspace status detection identifies files changed on the upstream since the merge base and retains pending deleted files in the tree; Depot continues to show only committed objects from the selected Git ref.
+- Files, History, Pending, Submitted, Stream Graph, and Workspaces can all be closed and restored from checked **View** menu entries. Visibility, active tab, per-tab filters, scroll position, and mounted view state persist.
+- Selecting a Workspace file or folder while Submitted is active now clears stale rows immediately, loads the path-scoped log, and remains on Submitted; an empty history produces an empty table.
+
+### 中文
+
+- Submitted 详情中的文件新增 **Diff Against Previous Revision**，同时保留本地 Workspace 比较；外部 Diff 可正确处理重命名前后的不同路径。
+- Depot/Workspace 树改用 P4V 风格蓝色/黄色对象图标，并可叠加同步、落后、仅本地、内容不同、Add/Edit/Delete/Move/Copy、待 Resolve 和 Git LFS Lock 徽标。
+- Workspace 会识别 merge-base 之后远端改动的文件，并保留待删除文件；Depot 继续只显示所选 Git ref 中真实存在的已提交对象。
+- Files、History、Pending、Submitted、Stream Graph、Workspaces 均可关闭，并从带勾选状态的 **View** 菜单恢复；显示状态、活动页签、各页筛选、滚动位置和已挂载视图状态会保留。
+- Submitted 活动时点击 Workspace 文件或文件夹，会立即清空旧行并加载路径范围提交，同时保持 Submitted；没有历史时显示空表。
+
 ## 0.7.0 — 2026-08-12
 
 ### English

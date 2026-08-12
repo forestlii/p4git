@@ -159,6 +159,19 @@ describe('GitService Git-native operations', () => {
     expect((await git(root, 'status', '--porcelain')).trim()).toBe('')
   }, 15_000)
 
+  it('keeps a pending deleted file visible in the Workspace listing', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await rm(join(root, 'tracked.txt'))
+
+    expect(await subject.listDirectory(root)).toContainEqual({
+      name: 'tracked.txt',
+      path: 'tracked.txt',
+      isDirectory: false,
+      tracked: true
+    })
+  }, 15_000)
+
   it('fast-forwards Get Latest and reports diverged branches without changing local history', async () => {
     const root = await createRepository()
     const remote = await mkdtemp(join(tmpdir(), 'p4git-service-'))
@@ -173,17 +186,21 @@ describe('GitService Git-native operations', () => {
     await git(peer, 'config', 'user.email', 'peer@example.invalid')
 
     await writeFile(join(peer, 'remote.txt'), 'remote one\n', 'utf8')
-    await git(peer, 'add', 'remote.txt')
+    await writeFile(join(peer, 'tracked.txt'), 'server revision\n', 'utf8')
+    await git(peer, 'add', 'remote.txt', 'tracked.txt')
     await git(peer, 'commit', '-m', 'remote one')
     await git(peer, 'push')
 
     const subject = service()
+    await subject.fetch(root)
+    expect((await subject.listDirectory(root)).find((entry) => entry.path === 'tracked.txt')?.unsynced).toBe(true)
     await expect(subject.pull(root)).resolves.toMatchObject({
       outcome: 'fast-forwarded',
       upstream: 'origin/main',
       ahead: 0,
       behind: 1
     })
+    expect((await subject.listDirectory(root)).find((entry) => entry.path === 'tracked.txt')?.unsynced).toBe(false)
 
     await writeFile(join(root, 'local.txt'), 'local\n', 'utf8')
     await git(root, 'add', 'local.txt')
