@@ -74,7 +74,7 @@ Moving a file to **Ready to submit** stages it. Moving a staged file to Default 
 
 ## Diff and Revert
 
-Double-click a pending file or select it and choose **Diff**. The matching staged or unstaged diff appears under **Diff Summary**. Untracked text files appear as all-new content; binary files and untracked files over 2 MB are not previewed.
+Double-click a pending file or select it and choose **Diff**. The matching staged or unstaged diff appears in an aligned side-by-side viewer with line numbers, character-level highlights, synchronized scrolling, and Previous/Next Difference navigation. Untracked text files appear as all-new content; binary files and untracked files over 2 MB are not previewed.
 
 After confirmation, **Revert** restores both the index and working-tree content of tracked files. Selected added or untracked files are listed in a separate warning because Revert permanently deletes them from disk. A mixed multi-selection restores tracked files and deletes only the explicitly listed new files. P4Git cannot undo either operation.
 
@@ -88,7 +88,11 @@ Open **Tools > Preferences...** to configure Beyond Compare or another compariso
 
 The template must contain `{left}` and `{right}`; optional `{leftTitle}` and `{rightTitle}` placeholders provide readable pane names. Arguments are passed directly to the executable without a command shell.
 
-Once configured, file-level Diff actions automatically use the external tool for HEAD/Workspace, index/Workspace, HEAD/index, Depot-ref/Workspace, and History Previous/HEAD comparisons. P4Git creates temporary read-only comparison copies, preserving binary data, and removes stale copies after 24 hours. Folder-history diffs and whole-commit diffs remain in the built-in Diff Summary. If the configured program is missing or cannot launch, P4Git reports the problem and falls back to the built-in viewer. Choose **Disable** in Preferences to return to the built-in viewer for all comparisons.
+On Windows, P4Git automatically discovers `C:\Program Files\Beyond Compare 5\BCompare.exe` (and Beyond Compare 4) on first use. A configured external tool is preferred for HEAD/Workspace, index/Workspace, HEAD/index, Depot-ref/Workspace, and History Previous/HEAD comparisons. P4Git creates temporary read-only copies, preserves binary data, and removes stale copies after 24 hours. If the tool is disabled, missing, or cannot launch, the built-in Beyond Compare-style side-by-side viewer is used.
+
+## Workspace selection and multiple windows
+
+Launch opens the Workspace chooser and preselects the most recently used repository without connecting automatically. **File > New Workspace Window** opens another chooser, while a Workspaces-row context menu can open that repository directly in a new window. Repository selection, branch, tabs, tasks, and cancellation are scoped to that window and Workspace.
 
 ## Submit Changelist
 
@@ -125,7 +129,7 @@ If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git o
 
 ## Selection, Layout, Tasks, and LFS Locks
 
-Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. The active-tab filter supports **Contains**, **Starts with**, regular expressions, and optional case matching across visible names, paths, actions, authors, descriptions, hashes, and refs; invalid expressions are reported instead of silently matching nothing. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
+Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. Selecting a file or folder in either Depot or Workspace refreshes the scoped History and Submitted data without changing the active right-hand tab. Pending Changelist files include **Show in Explorer**; deleted files open their former containing folder. The active-tab filter supports **Contains**, **Starts with**, regular expressions, and optional case matching across visible names, paths, actions, authors, descriptions, hashes, and refs; invalid expressions are reported instead of silently matching nothing. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
 
 The **Tasks** button next to Log opens command history and running-process status. Fetch displays an animated footer status and indeterminate progress line immediately, so a slow remote cannot look like an ignored click; starting a duplicate Fetch while one is active is blocked. **Cancel Running** terminates active Git process trees. Open **Tools > Git > Git LFS Locks** or a file's **Git** context submenu to inspect, create, unlock, or force-unlock LFS locks. P4Git reports when Git LFS or remote locking is unavailable.
 

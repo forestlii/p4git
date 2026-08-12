@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions, OpenDialogOptions } from 'electron'
 import { access } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import type {
   AbortOperation,
   AppearanceSettings,
@@ -29,7 +29,7 @@ let git: GitService
 let settings: SettingsStore
 let gitlab: GitLabService
 
-function createWindow(): void {
+function createWindow(workspace?: string): void {
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -51,9 +51,11 @@ function createWindow(): void {
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    if (workspace) url.searchParams.set('workspace', workspace)
+    void mainWindow.loadURL(url.toString())
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'), workspace ? { query: { workspace } } : undefined)
   }
 }
 
@@ -79,6 +81,7 @@ function createApplicationMenu(): void {
     {
       label: 'File',
       submenu: [
+        { label: 'New Workspace Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
         action('Open Workspace...', 'open-workspace', 'CmdOrCtrl+O'),
         action('Clone Repository...', 'clone'),
         action('Init Repository...', 'init'),
@@ -272,6 +275,7 @@ function contextMenuTemplate(
         item('Time-lapse View', 'timelapse', !request.untracked),
         separator,
         item('Show in Workspace Tree', 'show-workspace'),
+        item('Show in Explorer', 'show-explorer'),
         item('Copy Workspace Path', 'copy-path'),
         separator,
         gitMenu([
@@ -343,6 +347,7 @@ function contextMenuTemplate(
     case 'workspace':
       return [
         item('Switch to Workspace', 'open-workspace', !request.current),
+        item('Open in New Window', 'open-workspace-new'),
         item('Show in Explorer', 'show-explorer'),
         item('Copy Workspace Root', 'copy-path'),
         separator,
@@ -387,6 +392,10 @@ function contextMenuTemplate(
 }
 
 function registerIpc(): void {
+  ipcMain.handle('window:new-workspace', async (_event, repoPath?: string) => {
+    const workspace = repoPath ? (await git.summary(repoPath)).root : undefined
+    createWindow(workspace)
+  })
   ipcMain.handle('dialog:choose-repository', async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     const options: OpenDialogOptions = {
@@ -466,7 +475,7 @@ function registerIpc(): void {
     if (cleanPath && (!argumentsTemplate?.includes('{left}') || !argumentsTemplate.includes('{right}'))) {
       throw new Error('参数模板必须同时包含 {left} 和 {right}。')
     }
-    return settings.update({ diffToolPath: cleanPath, diffToolArguments: cleanPath ? argumentsTemplate?.trim() : undefined })
+    return settings.update({ diffToolPath: cleanPath, diffToolArguments: cleanPath ? argumentsTemplate?.trim() : undefined, diffToolAutoDiscover: false })
   })
   ipcMain.handle('settings:save-preferences', async (_event, diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings) => {
     const validate = async (value: string | undefined, label: string): Promise<string | undefined> => {
@@ -481,7 +490,7 @@ function registerIpc(): void {
     const mergePath = await validate(mergeExecutable, '外部 Merge 工具')
     if (diffPath && (!diffArguments?.includes('{left}') || !diffArguments.includes('{right}'))) throw new Error('Diff 参数模板必须包含 {left} 和 {right}。')
     if (mergePath && !['{base}', '{ours}', '{theirs}', '{result}'].every((token) => mergeArguments?.includes(token))) throw new Error('Merge 参数模板必须包含 {base}、{ours}、{theirs} 和 {result}。')
-    return settings.update({ diffToolPath: diffPath, diffToolArguments: diffPath ? diffArguments?.trim() : undefined, mergeToolPath: mergePath, mergeToolArguments: mergePath ? mergeArguments?.trim() : undefined, appearance })
+    return settings.update({ diffToolPath: diffPath, diffToolArguments: diffPath ? diffArguments?.trim() : undefined, diffToolAutoDiscover: false, mergeToolPath: mergePath, mergeToolArguments: mergePath ? mergeArguments?.trim() : undefined, appearance })
   })
   ipcMain.handle('git:health', () => git.health())
   ipcMain.handle('git:open', (_event, repoPath: string) => git.openRepository(repoPath))
@@ -513,8 +522,8 @@ function registerIpc(): void {
   ipcMain.handle('git:list-tree', (_event, repoPath: string, ref: string, relativePath?: string) =>
     git.listTree(repoPath, ref, relativePath)
   )
-  ipcMain.handle('git:file-history', (_event, repoPath: string, filePath: string, limit?: number) =>
-    git.fileHistory(repoPath, filePath, limit)
+  ipcMain.handle('git:file-history', (_event, repoPath: string, filePath: string, limit?: number, ref?: string) =>
+    git.fileHistory(repoPath, filePath, limit, ref)
   )
   ipcMain.handle('git:file-revision-diff', (_event, repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     git.fileRevisionDiff(repoPath, filePath, ref, compareRef)
@@ -623,7 +632,7 @@ function registerIpc(): void {
   ipcMain.handle('git:push-preview', (_event, request: PushRequest) => git.pushPreview(request))
   ipcMain.handle('git:push-to', (_event, request: PushRequest) => git.pushTo(request))
   ipcMain.handle('git:operation-state', (_event, repoPath: string) => git.operationState(repoPath))
-  ipcMain.handle('git:cancel', () => git.cancelOperations())
+  ipcMain.handle('git:cancel', (_event, repoPath?: string) => git.cancelOperations(repoPath))
   ipcMain.handle('git:clone', (_event, request: CloneRequest) => git.cloneRepository(request))
   ipcMain.handle('git:init', (_event, request: InitRequest) => git.initRepository(request))
   ipcMain.handle('settings:save-navigation', (_event, bookmarks: string[], locationHistory: string[]) =>
@@ -654,7 +663,9 @@ function registerIpc(): void {
     await shell.openPath(summary.root)
   })
   ipcMain.handle('shell:reveal-path', async (_event, repoPath: string, filePath: string) => {
-    shell.showItemInFolder(await git.workspacePath(repoPath, filePath))
+    const target = await git.workspacePath(repoPath, filePath)
+    if (await access(target).then(() => true).catch(() => false)) shell.showItemInFolder(target)
+    else await shell.openPath(dirname(target))
   })
   ipcMain.handle('shell:open-file', async (_event, repoPath: string, filePath: string) => {
     const result = await shell.openPath(await git.workspacePath(repoPath, filePath))

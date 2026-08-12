@@ -128,7 +128,7 @@ async function canExecute(filePath: string): Promise<boolean> {
 
 export class GitService {
   private gitPath?: string
-  private readonly activeProcesses = new Set<ChildProcess>()
+  private readonly activeProcesses = new Map<ChildProcess, string | undefined>()
 
   constructor(private readonly settings: SettingsStore) {}
 
@@ -207,11 +207,11 @@ export class GitService {
       const content = await readFile(fullPath)
       if (content.includes(0)) return 'Binary file — preview is not available.'
       if (content.byteLength > 2 * 1024 * 1024) return 'File is larger than 2 MB — preview is disabled.'
-      return content
-        .toString('utf8')
-        .split('\n')
-        .map((line) => `+${line}`)
-        .join('\n')
+      const text = content.toString('utf8')
+      const lines = text.split('\n')
+      if (lines.at(-1) === '') lines.pop()
+      if (!lines.length) return 'No textual differences to display.'
+      return `--- /dev/null\n+++ b/${safePath}\n@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join('\n')}${text.endsWith('\n') ? '\n' : '\n\\ No newline at end of file\n'}`
     }
     const args = ['diff', '--no-ext-diff', '--no-color']
     if (request.staged) args.push('--cached')
@@ -679,7 +679,7 @@ export class GitService {
     return this.markLocalOnly(root, parseLog(output))
   }
 
-  async fileHistory(repoPath: string, filePath: string, limit = 100): Promise<CommitInfo[]> {
+  async fileHistory(repoPath: string, filePath: string, limit = 100, ref = 'HEAD'): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
     if (!await this.hasHead(root)) return []
     const safePath = filePath === '.' || !filePath ? '.' : this.safeRelativePath(root, filePath)
@@ -687,7 +687,8 @@ export class GitService {
     const formatArgs = [
       `-${safeLimit}`,
       '--date=iso-strict',
-      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e'
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e',
+      this.safeRef(ref)
     ]
     const output = safePath === '.'
       ? await this.run(root, ['log', ...formatArgs, '--', safePath])
@@ -867,7 +868,7 @@ export class GitService {
     const args = expandMergeToolArguments(configured.mergeToolArguments?.trim() || DEFAULT_MERGE_TOOL_ARGUMENTS, paths)
     await new Promise<void>((resolveLaunch, rejectLaunch) => {
       const child = spawn(executable, args, { cwd: root, windowsHide: false, stdio: 'ignore' })
-      this.activeProcesses.add(child)
+      this.activeProcesses.set(child, root)
       child.once('error', (error) => { this.activeProcesses.delete(child); rejectLaunch(new Error(`无法启动外部 Merge 工具：${error.message}`)) })
       child.once('close', (code) => { this.activeProcesses.delete(child); code === 0 ? resolveLaunch() : rejectLaunch(new Error(`外部 Merge 工具退出，代码 ${code ?? 'unknown'}。`)) })
     })
@@ -1140,8 +1141,9 @@ export class GitService {
     return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation), changelistId: selective?.changelistId, submitPending: Boolean(pendingSubmit), submitCommit: pendingSubmit?.commit }
   }
 
-  async cancelOperations(): Promise<number> {
-    const processes = [...this.activeProcesses]
+  async cancelOperations(repoPath?: string): Promise<number> {
+    const target = repoPath ? normalize(resolve(repoPath)).toLowerCase() : undefined
+    const processes = [...this.activeProcesses].filter(([, cwd]) => !target || (cwd && normalize(resolve(cwd)).toLowerCase() === target)).map(([child]) => child)
     for (const child of processes) {
       if (!child.pid) continue
       if (process.platform === 'win32') {
@@ -1563,7 +1565,7 @@ export class GitService {
         const detail = stderr?.toString().trim() || stdout?.toString().trim() || error.message
         rejectOutput(new Error(detail))
       })
-      this.activeProcesses.add(child)
+      this.activeProcesses.set(child, cwd)
     })
   }
 
@@ -1573,7 +1575,7 @@ export class GitService {
         cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       })
-      this.activeProcesses.add(child)
+      this.activeProcesses.set(child, cwd)
       const stdout: Buffer[] = []
       const stderr: Buffer[] = []
       let size = 0

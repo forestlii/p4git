@@ -3,6 +3,7 @@ import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest,
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
+  openWorkspaceWindow: (repoPath?: string) => ipcRenderer.invoke('window:new-workspace', repoPath),
   chooseGitExecutable: () => ipcRenderer.invoke('dialog:choose-git'),
   chooseDiffExecutable: () => ipcRenderer.invoke('dialog:choose-diff-tool'),
   chooseDivergenceStrategy: (result: PullResult) => ipcRenderer.invoke('dialog:choose-divergence-strategy', result),
@@ -35,8 +36,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:list-directory', repoPath, relativePath),
   listTree: (repoPath: string, ref: string, relativePath = '') =>
     ipcRenderer.invoke('git:list-tree', repoPath, ref, relativePath),
-  getFileHistory: (repoPath: string, filePath: string, limit?: number) =>
-    ipcRenderer.invoke('git:file-history', repoPath, filePath, limit),
+  getFileHistory: (repoPath: string, filePath: string, limit?: number, ref?: string) =>
+    ipcRenderer.invoke('git:file-history', repoPath, filePath, limit, ref),
   getFileRevisionDiff: (repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     ipcRenderer.invoke('git:file-revision-diff', repoPath, filePath, ref, compareRef),
   launchExternalDiff: (request: ExternalDiffRequest) => ipcRenderer.invoke('git:external-diff', request),
@@ -116,7 +117,7 @@ const api: P4GitApi = {
   getPushPreview: (request: PushRequest) => ipcRenderer.invoke('git:push-preview', request),
   pushTo: (request: PushRequest) => ipcRenderer.invoke('git:push-to', request),
   getOperationState: (repoPath: string) => ipcRenderer.invoke('git:operation-state', repoPath),
-  cancelOperations: () => ipcRenderer.invoke('git:cancel'),
+  cancelOperations: (repoPath?: string) => ipcRenderer.invoke('git:cancel', repoPath),
   cloneRepository: (request: CloneRequest) => ipcRenderer.invoke('git:clone', request),
   initRepository: (request: InitRequest) => ipcRenderer.invoke('git:init', request),
   saveNavigation: (bookmarks: string[], locationHistory: string[]) =>

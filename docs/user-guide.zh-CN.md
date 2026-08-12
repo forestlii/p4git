@@ -74,7 +74,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ## Diff 与 Revert
 
-双击 Pending 文件，或选中后点击 **Diff**，对应的已暂存或未暂存差异会显示在底部 **Diff Summary**。未跟踪文本文件按全新内容显示；二进制文件和大于 2 MB 的未跟踪文件不提供预览。
+双击 Pending 文件，或选中后点击 **Diff**，对应的已暂存或未暂存差异会在双栏视图中显示，支持行号、行对齐、字符级高亮、同步滚动以及上一个/下一个差异跳转。未跟踪文本文件按全新内容显示；二进制文件和大于 2 MB 的未跟踪文件不提供预览。
 
 **Revert** 会在确认后同时恢复所选已跟踪文件的索引和工作区内容。对于选中的新增或未跟踪文件，P4Git 会另行列出文件清单并警告永久删除；混合多选时只删除清单中的新文件，其余已跟踪文件恢复到 `HEAD`。这些操作都无法由 P4Git 撤销。
 
@@ -88,7 +88,11 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 模板必须包含 `{left}` 和 `{right}`；可选的 `{leftTitle}`、`{rightTitle}` 用于显示易读的左右标题。参数会以数组直接传给可执行程序，不经过命令行 shell。
 
-配置后，文件级 Diff 会自动优先使用外部工具，包括 HEAD/Workspace、index/Workspace、HEAD/index、Depot ref/Workspace，以及 History 的 Previous/HEAD 比较。P4Git 会生成保留二进制内容的临时只读比较副本，并清理超过 24 小时的旧副本。目录 History Diff 和整个 commit 的 Diff 仍显示在内置 Diff Summary。如果程序丢失或启动失败，P4Git 会提示错误并自动回退到内置视图。在 Preferences 中点击 **Disable** 可完全恢复内置 Diff。
+Windows 首次使用时会自动发现 `C:\Program Files\Beyond Compare 5\BCompare.exe`（也兼容 Beyond Compare 4）。配置外部工具后，HEAD/Workspace、index/Workspace、HEAD/index、Depot ref/Workspace 和 History Previous/HEAD 会优先使用它。P4Git 会生成保留二进制内容的临时只读副本，并清理超过 24 小时的旧副本。工具被禁用、丢失或启动失败时，使用新的 Beyond Compare 风格内置双栏视图。
+
+## Workspace 选择与多窗口
+
+启动时先显示 Workspace 选择器，只预选最近仓库，不会自动连接。**File > New Workspace Window** 打开另一个选择窗口；Workspaces 列表右键可把仓库直接打开到新窗口。仓库选择、分支、页签、任务和取消操作均限定在对应窗口与 Workspace。
 
 ## Submit Changelist
 
@@ -125,7 +129,7 @@ Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会
 
 ## 多选、布局、任务与 LFS 锁
 
-Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。当前页签 Filter 支持 **Contains**、**Starts with**、正则表达式和区分大小写，可匹配可见名称、路径、状态、作者、说明、哈希和 ref；无效正则会明确报错。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
+Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。在 Depot 或 Workspace 选中文件/文件夹会刷新对应的 History 与 Submitted 数据，但不会改变右侧当前页签。Pending Changelist 文件右键提供 **Show in Explorer**；文件已删除时打开原目录。当前页签 Filter 支持 **Contains**、**Starts with**、正则表达式和区分大小写，可匹配可见名称、路径、状态、作者、说明、哈希和 ref；无效正则会明确报错。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
 
 Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态。Fetch 开始后，底部会立即显示旋转状态和不确定进度线，慢速远端不再像“点击无反应”；已有 Fetch 运行时会阻止重复启动。**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
 

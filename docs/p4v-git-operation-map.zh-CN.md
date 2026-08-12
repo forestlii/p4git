@@ -21,8 +21,8 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Add | `git add` 未跟踪文件 | 已实现 |
 | Delete | `git rm`，或登记已经发生的磁盘删除 | 已实现 |
 | Revert | 已跟踪文件恢复到 `HEAD`；明确确认的新增/未跟踪文件从磁盘删除 | 已实现，有确认 |
-| Diff | Working tree、index、Depot ref、commit diff | 已实现，文本显示 |
-| 外部 Diff 工具 | 用户配置可执行程序和参数模板；提供 Beyond Compare 默认值与内置回退 | 文件 Diff 已实现 |
+| Diff | 在 Beyond Compare 风格对齐双栏视图中显示 working tree、index、Depot ref 和 commit diff | 已实现 |
+| 外部 Diff 工具 | 自动发现 Beyond Compare 5/4 或使用用户配置的程序，并保留内置双栏回退 | 文件 Diff 已实现 |
 | Time-lapse View | `git blame` 逐行作者、提交和时间 | 已实现，简化版 |
 | Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，支持 ref 模糊筛选、分支栏调宽及本地/远程分支操作 | 已实现 |
 | 从其他分支选择变更 | 查看提交/文件、过滤等价补丁，再把所选改动不提交地放入新本地 Changelist；Resolve 与 Continue 保留剩余队列 | 已实现；Merge commit 仍需单独指定 mainline |
@@ -32,10 +32,10 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Submit | Fetch、commit、安全 Rebase/Resolve、Push 并验证服务器目标引用；被拒绝的提交明确标为 Local only 且可重试 | 已实现 |
 | Submitted | Git log；展开文件、P4V 风格提交详情、上一版本/本地文件 Diff、复制 hash，并用 `git revert` 撤销所选提交 | 已实现 |
 | Jobs | GitLab Issues | GitLab 项目已配置时实现 |
-| 文件/目录 History | Workspace 选择联动 History 与 Submitted，基于 Git log 支持恢复版本及与 Previous/HEAD 比较 | 已实现 |
+| 文件/目录 History | Depot 和 Workspace 选择均联动 History/Submitted，按所选 ref/path 筛选且不切换页签 | 已实现 |
 | 界面 Filter | 多字段 Contains/Starts with/正则筛选，支持大小写匹配和表达式校验 | 已实现 |
 | View 管理页签 | 主页签可关闭，由带勾选状态的 View 菜单恢复并持久保存状态 | 已实现 |
-| Workspaces | 最近打开的本地 Git 仓库 | 已实现 |
+| Workspaces | P4V 风格启动选择器、最近本地仓库和独立多窗口打开 | 已实现 |
 | 原生右键菜单 | 按 Workspace、Depot、Pending、Submitted、Branch 等对象显示适用操作 | 已实现 |
 | Log | 显示命令意图、成功或错误，可右键清空 | 已实现 |
 

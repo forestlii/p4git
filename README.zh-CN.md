@@ -21,7 +21,7 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | Shelve | 把一个 Changelist 保存为本地 Git stash，并在 Unshelve 时恢复文件归组 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
 | History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
-| 外部 Diff | 配置 Beyond Compare 或其他可执行程序；文件比较会自动优先使用，并保留内置回退 |
+| Diff | Beyond Compare 风格内置双栏视图，支持行对齐、字符高亮和差异跳转；Windows 自动发现 Beyond Compare 5，也可配置其他外部工具 |
 | 提交 | P4V 严格送达：Fetch、commit、必要时 Rebase/Resolve、Push，并验证服务器引用后才报告成功 |
 | Submitted | 按路径联动浏览提交；详情文件可与上一版本或本地 Workspace 比较 |
 | Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；分支栏可拖动调宽，并支持按名称模糊筛选 |
@@ -32,7 +32,8 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | 个性化工作区 | 拖动面板分隔线和文件列；选择经典/浅色/深色主题、密度、字号及工具栏文字 |
 | 任务进度 | Fetch 时立即在底部显示运行状态，并可在任务中心查看或取消 Git 任务 |
 | GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
-| 导航 | View 管理的可关闭页签、Workspace/History/Submitted 联动、各页独立持久筛选、书签和可排序表头 |
+| 导航 | Depot/Workspace 与 History/Submitted 联动、View 管理的可关闭页签、各页独立持久筛选、书签和可排序表头 |
+| 多窗口 | 启动时使用 P4V 风格 Workspace 选择器，各仓库窗口独立运行，并支持 Open in New Window |
 | 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
 | Push / Remote | 管理 Remote，选择远端与目标分支，并在 Push 前预览提交 |
 | Git 发现 | 自动查找 Git for Windows，也可选择 UGit 等客户端自带的 `git.exe` |

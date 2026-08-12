@@ -1,11 +1,23 @@
 import { app } from 'electron'
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { DEFAULT_APPEARANCE } from '../shared/types'
 import type { AppSettings, AppearanceSettings } from '../shared/types'
 
 const defaults: AppSettings = { recentRepositories: [] }
+const beyondCompareCandidates = [
+  'C:\\Program Files\\Beyond Compare 5\\BCompare.exe',
+  'C:\\Program Files\\Beyond Compare 4\\BCompare.exe'
+]
+
+async function discoveredDiffTool(enabled: boolean): Promise<string | undefined> {
+  if (!enabled || process.platform !== 'win32') return undefined
+  for (const candidate of beyondCompareCandidates) {
+    if (await access(candidate).then(() => true).catch(() => false)) return candidate
+  }
+  return undefined
+}
 
 function appearance(value: Partial<AppearanceSettings> | undefined): AppearanceSettings {
   const scale = Number(value?.fontScale)
@@ -33,12 +45,15 @@ export class SettingsStore {
     try {
       const raw = await readFile(this.filePath, 'utf8')
       const parsed = JSON.parse(raw) as Partial<AppSettings>
+      const diffToolAutoDiscover = parsed.diffToolAutoDiscover !== false
+      const diffToolPath = typeof parsed.diffToolPath === 'string' ? parsed.diffToolPath : await discoveredDiffTool(diffToolAutoDiscover)
       return {
         ...defaults,
         ...parsed,
         gitPath: typeof parsed.gitPath === 'string' ? parsed.gitPath : undefined,
-        diffToolPath: typeof parsed.diffToolPath === 'string' ? parsed.diffToolPath : undefined,
+        diffToolPath,
         diffToolArguments: typeof parsed.diffToolArguments === 'string' ? parsed.diffToolArguments : undefined,
+        diffToolAutoDiscover,
         mergeToolPath: typeof parsed.mergeToolPath === 'string' ? parsed.mergeToolPath : undefined,
         mergeToolArguments: typeof parsed.mergeToolArguments === 'string' ? parsed.mergeToolArguments : undefined,
         appearance: appearance(parsed.appearance),
@@ -54,7 +69,7 @@ export class SettingsStore {
           : []
       }
     } catch {
-      return { ...defaults }
+      return { ...defaults, diffToolPath: await discoveredDiffTool(true), diffToolAutoDiscover: true }
     }
   }
 

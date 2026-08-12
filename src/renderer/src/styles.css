@@ -1172,7 +1172,7 @@ textarea:focus-visible {
 .commit-files > button:hover { background: #dceff8; }
 .commit-files > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-file-status { display: flex; align-items: center; gap: 5px; }
-.text-diff-dialog > pre { height: min(660px, calc(100vh - 150px)); overflow: auto; margin: 0; padding: 9px; background: #fff; font: 12px/1.45 Consolas, monospace; white-space: pre; }
+.text-diff-dialog > .side-diff { height: min(660px, calc(100vh - 150px)); }
 .pending-diff-dialog .modal-title > span { margin-left: auto; color: #657178; font-size: 11px; }
 .pending-diff-dialog .modal-title > button { margin-left: 0; }
 .pending-diff-body { display: grid; height: min(680px, calc(100vh - 145px)); grid-template-columns: minmax(260px, 32%) minmax(0, 1fr); background: white; }
@@ -1189,8 +1189,32 @@ textarea:focus-visible {
 .pending-diff-body > section > header { display: grid; min-width: 0; align-content: center; gap: 2px; padding: 5px 9px; border-bottom: 1px solid #aaa; background: #f3f3f3; }
 .pending-diff-body > section > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pending-diff-body > section > header span { color: #68757b; font-size: 10px; }
-.pending-diff-body > section > pre { overflow: auto; margin: 0; padding: 9px; background: white; font: 12px/1.45 Consolas, monospace; white-space: pre; }
-.pending-diff-body > section > pre.error { color: #a71924; white-space: pre-wrap; }
+.pending-diff-body > section > .side-diff { min-height: 0; }
+
+.side-diff { display: grid; min-width: 0; min-height: 0; grid-template-rows: 30px 27px minmax(0, 1fr); overflow: hidden; background: white; color: #263238; font: 12px/1.45 Consolas, monospace; }
+.side-diff.compact { width: 100%; height: 100%; }
+.side-diff-toolbar { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-bottom: 1px solid #9aa2a6; background: linear-gradient(#fafafa, #e5e5e5); font-family: "Segoe UI", sans-serif; font-size: 11px; }
+.side-diff-toolbar button { height: 23px; border: 1px solid #92999d; background: linear-gradient(#fff, #e3e3e3); }
+.side-diff-toolbar > span { margin-left: 4px; color: #58676e; }
+.side-diff-toolbar label { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.side-diff-head { display: grid; min-width: 960px; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #8d969a; background: #dce4e8; }
+.side-diff-head strong { overflow: hidden; padding: 5px 9px; border-right: 1px solid #8d969a; text-overflow: ellipsis; white-space: nowrap; }
+.side-diff-scroll { min-height: 0; overflow: auto; background: #fbfbfb; user-select: text; }
+.side-diff-row { display: grid; min-width: 960px; min-height: 20px; grid-template-columns: 52px minmax(420px, 1fr) 52px minmax(420px, 1fr); }
+.side-diff-row.current-difference { outline: 2px solid #e59b2d; outline-offset: -2px; }
+.line-number { padding: 1px 6px; border-right: 1px solid #c8ccce; background: #eef1f2; color: #7c8589; text-align: right; }
+.side-diff-scroll.hide-numbers .side-diff-row { grid-template-columns: 0 minmax(472px, 1fr) 0 minmax(472px, 1fr); }
+.side-diff-scroll.hide-numbers .line-number { overflow: hidden; padding: 0; border: 0; }
+.diff-cell { overflow: hidden; min-width: 0; padding: 1px 7px; border-right: 1px solid #aeb5b8; white-space: pre; }
+.diff-cell code { font: inherit; }
+.diff-cell.context { background: #fff; }
+.diff-cell.removed, .line-number.removed { background: #f3dfe7; }
+.diff-cell.added, .line-number.added { background: #dff0df; }
+.diff-cell.empty, .line-number.empty { background: #e8eaeb; }
+.diff-cell mark { padding: 0; background: #dc8da9; color: inherit; }
+.diff-cell.added mark { background: #85ce8d; }
+.side-diff-hunk { min-width: 960px; padding: 2px 8px; border-block: 1px solid #a9bdc7; background: #e2f0f6; color: #3c687b; }
+.side-diff-message { padding: 16px; color: #68757b; white-space: pre-wrap; }
 
 .selective-merge-form { display: grid; gap: 8px; padding: 10px; background: white; }
 .selective-merge-form > label { display: grid; grid-template-columns: 175px minmax(0, 1fr); align-items: center; gap: 8px; font-weight: 700; }
@@ -1705,7 +1729,8 @@ button:disabled {
   gap: 6px;
 }
 
-.browse-row input {
+.browse-row input,
+.browse-row select {
   height: 25px;
   border: 1px solid #888;
   padding: 3px 6px;
@@ -1745,6 +1770,9 @@ button:disabled {
   text-align: left;
 }
 .recent-workspaces button:hover { border-color: #9dc6dc; background: #e5f3f9; }
+.recent-workspaces button.selected { border-color: #72aac6; background: #dceff8; }
+.recent-workspaces button > span { display: grid; min-width: 0; overflow: hidden; color: #69757b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.recent-workspaces button b { overflow: hidden; color: #26343b; font-size: 12px; text-overflow: ellipsis; }
 
 @media (max-width: 1120px) {
   .workbench { grid-template-columns: 250px minmax(0, 1fr); }

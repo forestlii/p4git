@@ -311,6 +311,7 @@ export type ContextMenuAction =
   | 'switch-branch'
   | 'new-branch'
   | 'open-workspace'
+  | 'open-workspace-new'
   | 'clear-log'
   | 'git-stage'
   | 'git-unstage'
@@ -413,6 +414,7 @@ export interface AppSettings {
   gitPath?: string
   diffToolPath?: string
   diffToolArguments?: string
+  diffToolAutoDiscover?: boolean
   recentRepositories: string[]
   lastRepository?: string
   bookmarks?: string[]
@@ -529,6 +531,7 @@ export interface CheckoutRequest {
 
 export interface P4GitApi {
   chooseRepository(): Promise<string | undefined>
+  openWorkspaceWindow(repoPath?: string): Promise<void>
   chooseGitExecutable(): Promise<GitHealth | undefined>
   chooseDiffExecutable(): Promise<string | undefined>
   chooseDivergenceStrategy(result: PullResult): Promise<DivergenceChoice>
@@ -553,7 +556,7 @@ export interface P4GitApi {
   getBranches(repoPath: string): Promise<BranchInfo[]>
   listDirectory(repoPath: string, relativePath?: string): Promise<WorkspaceEntry[]>
   listTree(repoPath: string, ref: string, relativePath?: string): Promise<WorkspaceEntry[]>
-  getFileHistory(repoPath: string, filePath: string, limit?: number): Promise<CommitInfo[]>
+  getFileHistory(repoPath: string, filePath: string, limit?: number, ref?: string): Promise<CommitInfo[]>
   getFileRevisionDiff(repoPath: string, filePath: string, ref: string, compareRef?: string): Promise<string>
   launchExternalDiff(request: ExternalDiffRequest): Promise<boolean>
   getBlame(repoPath: string, filePath: string, ref?: string): Promise<BlameLine[]>
@@ -607,7 +610,7 @@ export interface P4GitApi {
   getPushPreview(request: PushRequest): Promise<PushPreview>
   pushTo(request: PushRequest): Promise<void>
   getOperationState(repoPath: string): Promise<OperationState>
-  cancelOperations(): Promise<number>
+  cancelOperations(repoPath?: string): Promise<number>
   cloneRepository(request: CloneRequest): Promise<string>
   initRepository(request: InitRequest): Promise<string>
   saveNavigation(bookmarks: string[], locationHistory: string[]): Promise<AppSettings>

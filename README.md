@@ -21,7 +21,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Shelve | Store a changelist as a local Git stash and restore its file assignments on Unshelve |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
-| External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
+| Diff | Beyond Compare-style built-in side-by-side view with aligned lines, character highlights, navigation, and optional external tools; Beyond Compare 5 is auto-detected on Windows |
 | Submit | P4V-strict delivery: Fetch, commit, Rebase/Resolve when needed, Push, and verify the exact server ref before reporting success |
 | Submitted | Browse path-linked commits; detail files compare against their previous revision or local Workspace |
 | Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |
@@ -32,7 +32,8 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Custom workspace | Drag pane dividers and file columns; select classic/light/dark themes, density, text size, and toolbar labels |
 | Task progress | See immediate Fetch activity in the footer and inspect/cancel running Git work in the task center |
 | GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
-| Navigation | Closable View-managed tabs, linked Workspace/History/Submitted selection, persistent per-tab filters, bookmarks, and sortable columns |
+| Navigation | Depot/Workspace-linked History and Submitted views, closable View-managed tabs, persistent per-tab filters, bookmarks, and sortable columns |
+| Multi-window | P4V-style Workspace chooser on launch, independent repository windows, and Open in New Window |
 | Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
 | Push / Remotes | Manage remotes, select a target ref, and preview outgoing commits before Push |
 | Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |

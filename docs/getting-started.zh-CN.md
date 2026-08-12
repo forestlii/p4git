@@ -36,6 +36,8 @@ P4Git 不捆绑 Git。它可以使用 Git for Windows，也可以使用其他桌
 
 ## 配置 Git
 
+P4Git 启动后先显示 P4V 风格 Workspace 选择器，不再自动打开上次的仓库。选择或双击最近 Workspace，也可以浏览其他仓库；通过 **File > New Workspace Window** 可让多个仓库在独立窗口中同时运行。
+
 P4Git 启动时会依次检查：
 
 1. `PATH` 中是否有 `git`。
@@ -56,7 +58,7 @@ P4Git 启动时会依次检查：
 
 1. 打开 **Pending**；可以先点击 **New Changelist...**，为当前任务创建一个列表。
 2. 把文件拖入该列表，或通过文件右键的 **Move to Changelist** 归组。
-3. 双击文件或点击 **Diff**，在底部 Diff Summary 面板审阅差异。
+3. 双击文件或点击 **Diff**，在 Beyond Compare 风格的双栏 Diff 面板审阅差异。
 4. 右键目标列表选择 **Submit Changelist**，检查准确的文件清单、填写说明并提交。
 
 Submit 现在遵循 P4V 语义：依次 Fetch、创建 commit、服务器有更新时安全 Rebase、Push，并验证远端分支确实指向该提交。只有验证通过才会报告成功。只有明确需要不上传服务器的 Git commit 时，才使用 **Tools > Git > Commit Locally**。

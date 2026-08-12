@@ -37,6 +37,8 @@ import { DEFAULT_APPEARANCE, DEFAULT_DIFF_TOOL_ARGUMENTS, DEFAULT_MERGE_TOOL_ARG
 import { filterError, filterQuery, makeFilterExpression, matchesFilter } from './filter'
 import type { FilterMode } from './filter'
 import { p4vEntryVisual } from './file-status'
+import { characterSegments, parseUnifiedDiff } from './side-by-side-diff'
+import type { DiffCell } from './side-by-side-diff'
 import type {
   AppearanceSettings,
   AppSettings,
@@ -256,6 +258,7 @@ function BrandIcon(): React.JSX.Element {
 export default function App(): React.JSX.Element {
   const [health, setHealth] = useState<GitHealth>({ available: false })
   const [settings, setSettings] = useState<AppSettings>({ recentRepositories: [] })
+  const [workspaceDraft, setWorkspaceDraft] = useState('')
   const [repository, setRepository] = useState<RepositorySummary>()
   const [history, setHistory] = useState<CommitInfo[]>([])
   const [branches, setBranches] = useState<BranchInfo[]>([])
@@ -288,7 +291,7 @@ export default function App(): React.JSX.Element {
   const [selectedBranch, setSelectedBranch] = useState<BranchInfo>()
   const [changelistState, setChangelistState] = useState<ChangelistState>({ changelists: [], assignments: {}, shelves: [] })
   const [commitFiles, setCommitFiles] = useState<RevisionFile[]>([])
-  const [fileHistoryView, setFileHistoryView] = useState<{ path: string; commits: CommitInfo[]; isDirectory: boolean }>()
+  const [fileHistoryView, setFileHistoryView] = useState<{ path: string; commits: CommitInfo[]; isDirectory: boolean; source: TreeMode; ref: string }>()
   const [timelapseView, setTimelapseView] = useState<{ path: string; lines: BlameLine[] }>()
   const [stashesView, setStashesView] = useState<{ repoPath: string; entries: StashEntry[] }>()
   const [reflogView, setReflogView] = useState<{ repoPath: string; entries: ReflogEntry[] }>()
@@ -463,9 +466,9 @@ export default function App(): React.JSX.Element {
       ])
       setHealth(nextHealth)
       setSettings(nextSettings)
-      if (nextHealth.available && nextSettings.lastRepository) {
-        await openRepository(nextSettings.lastRepository)
-      }
+      setWorkspaceDraft(nextSettings.lastRepository ?? nextSettings.recentRepositories[0] ?? '')
+      const requestedWorkspace = new URLSearchParams(window.location.search).get('workspace')
+      if (nextHealth.available && requestedWorkspace) await openRepository(requestedWorkspace)
     })()
   }, [openRepository])
 
@@ -651,7 +654,7 @@ export default function App(): React.JSX.Element {
       if (launched) appendLog(`External Diff: ${request.leftTitle} ↔ ${request.rightTitle} — ${request.filePath}`, 'success')
       return launched
     } catch (reason) {
-      const message = `${friendlyError(reason)} Falling back to the built-in Diff Summary.`
+      const message = `${friendlyError(reason)} Falling back to the built-in side-by-side Diff.`
       setError(message)
       appendLog(message, 'error')
       return false
@@ -763,8 +766,9 @@ export default function App(): React.JSX.Element {
     setBusy('history')
     try {
       appendLog(`git log --follow -- ${filePath}`)
-      const commits = await window.p4git.getFileHistory(repository.root, filePath)
-      setFileHistoryView({ path: filePath, commits, isDirectory })
+      const ref = treeMode === 'depot' ? depotRef : 'HEAD'
+      const commits = await window.p4git.getFileHistory(repository.root, filePath, undefined, ref)
+      setFileHistoryView({ path: filePath, commits, isDirectory, source: treeMode, ref })
       setPendingSelection(undefined)
       setSelectedCommit(commits[0])
       setDetailTab('details')
@@ -776,20 +780,14 @@ export default function App(): React.JSX.Element {
     } finally {
       setBusy(undefined)
     }
-  }, [appendLog, openMainTab, repository])
+  }, [appendLog, depotRef, openMainTab, repository, treeMode])
 
   const linkWorkspaceHistory = useCallback(async (entry: WorkspaceEntry) => {
     if (!repository) return
-    if (treeMode !== 'workspace') {
-      setSelectedEntry(entry)
-      setPendingSelection(undefined)
-      setSelectedCommit(undefined)
-      setSelectedBranch(undefined)
-      setFileHistoryView(undefined)
-      return
-    }
     const request = workspaceHistoryRequest.current++
-    const change = repository.changes.find((item) => item.path === entry.path)
+    const source = treeMode
+    const ref = source === 'depot' ? depotRef : 'HEAD'
+    const change = source === 'workspace' ? repository.changes.find((item) => item.path === entry.path) : undefined
     setSelectedEntry(entry)
     setPendingSelection(change
       ? { change, staged: change.staged && !change.unstaged, changelistId: change.unstaged ? changelistState.assignments[entry.path] : undefined }
@@ -797,15 +795,15 @@ export default function App(): React.JSX.Element {
     setSelectedCommit(undefined)
     setSelectedBranch(undefined)
     const path = entry.path || '.'
-    setFileHistoryView({ path, commits: [], isDirectory: entry.isDirectory })
+    setFileHistoryView({ path, commits: [], isDirectory: entry.isDirectory, source, ref })
     try {
-      const commits = await window.p4git.getFileHistory(repository.root, path)
+      const commits = await window.p4git.getFileHistory(repository.root, path, undefined, ref)
       if (request !== workspaceHistoryRequest.current - 1) return
-      setFileHistoryView({ path, commits, isDirectory: entry.isDirectory })
+      setFileHistoryView({ path, commits, isDirectory: entry.isDirectory, source, ref })
     } catch (reason) {
       if (request === workspaceHistoryRequest.current - 1) appendLog(`History for ${entry.path || '.'}: ${friendlyError(reason)}`, 'error')
     }
-  }, [appendLog, changelistState.assignments, repository, treeMode])
+  }, [appendLog, changelistState.assignments, depotRef, repository, treeMode])
 
   const showSelectedHistory = useCallback(async () => {
     await showFileHistory((selectedPath ?? currentDirectory) || '.', selectedEntry?.isDirectory ?? !selectedPath)
@@ -868,7 +866,7 @@ export default function App(): React.JSX.Element {
       const next = await window.p4git.savePreferences(preferenceDraft.diffPath || undefined, preferenceDraft.diffArguments, preferenceDraft.mergePath || undefined, preferenceDraft.mergeArguments, preferenceDraft.appearance)
       setSettings(next)
       setPreferencesOpen(false)
-      appendLog(next.diffToolPath ? `External Diff configured: ${next.diffToolPath}` : 'External Diff disabled; using the built-in Diff Summary.', 'success')
+      appendLog(next.diffToolPath ? `External Diff configured: ${next.diffToolPath}` : 'External Diff disabled; using the built-in side-by-side Diff.', 'success')
     } catch (reason) {
       setError(friendlyError(reason))
     } finally {
@@ -1464,6 +1462,7 @@ export default function App(): React.JSX.Element {
       case 'file-history': await showFileHistory(change.path); break
       case 'timelapse': await showTimelapse(change.path); break
       case 'show-workspace': await focusPath({ name: parts(change.path).name, path: change.path, isDirectory: false, tracked: change.kind !== 'untracked' }, 'workspace'); break
+      case 'show-explorer': await window.p4git.revealPath(repository.root, effectiveSelections[0]?.change.path ?? change.path); break
       case 'copy-path': await copyText(`${repository.root}\\${change.path.replaceAll('/', '\\')}`); break
       case 'git-stage': await moveChangesToReady(effectiveSelections); break
       case 'git-unstage': await moveChangesToChangelist(effectiveSelections); break
@@ -1621,6 +1620,7 @@ export default function App(): React.JSX.Element {
     if (!repository) return
     const action = await window.p4git.showContextMenu({ kind: 'workspace', current: path === repository.root })
     if (action === 'open-workspace') await openRepository(path)
+    else if (action === 'open-workspace-new') await window.p4git.openWorkspaceWindow(path)
     else if (action === 'show-explorer') await window.p4git.revealRepository(path)
     else if (action === 'copy-path') await copyText(path)
     else if (action === 'git-fetch') await performGitAt(path, 'git-fetch', 'fetch --all --prune', () => window.p4git.fetch(path), `Fetched ${path}.`)
@@ -1665,7 +1665,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.9.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.10.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1719,8 +1719,7 @@ export default function App(): React.JSX.Element {
   async function selectDirectory(path: string): Promise<void> {
     if (!repository) return
     setCurrentDirectory(path)
-    if (treeMode === 'workspace') void linkWorkspaceHistory({ name: path ? parts(path).name : repository.name, path, isDirectory: true, tracked: true })
-    else setSelectedEntry(undefined)
+    void linkWorkspaceHistory({ name: path ? parts(path).name : treeMode === 'depot' ? depotRef : repository.name, path, isDirectory: true, tracked: true })
     const activeEntries = treeMode === 'depot' ? depotEntriesByPath : entriesByPath
     if (!activeEntries[path]) {
       if (treeMode === 'depot') await loadTree(repository.root, depotRef, path)
@@ -1910,16 +1909,16 @@ export default function App(): React.JSX.Element {
           <div className="dialog-title"><BrandIcon /><span>Open Connection</span></div>
           <div className="connection-body">
             <div className="connection-hero"><HardDrive size={42} /><div><h1>Open a Git Workspace</h1><p>P4V workflow and layout, backed by your existing Git repository.</p></div></div>
-            <label>Workspace folder</label>
-            <div className="browse-row"><input readOnly placeholder="Select an existing Git repository..." /><button onClick={() => void chooseRepository()} disabled={!health.available || Boolean(busy)}>Browse...</button></div>
+            <label>Workspace</label>
+            <div className="browse-row"><select value={workspaceDraft} onChange={(event) => setWorkspaceDraft(event.target.value)} disabled={!health.available || Boolean(busy)}><option value="">Select a recent Git workspace...</option>{settings.recentRepositories.map((path) => <option key={path} value={path}>{parts(path).name} — {path}</option>)}</select><button onClick={() => void chooseRepository()} disabled={!health.available || Boolean(busy)}>Browse...</button></div>
             <div className={`health-row ${health.available ? 'ok' : 'bad'}`}>
               {health.available ? <CircleCheck size={16} /> : <AlertTriangle size={16} />}
               <span>{health.available ? `${health.version} — ${health.path}` : health.error || 'Checking Git installation...'}</span>
               <button onClick={() => void chooseGit()}><Settings size={14} />Configure Git</button>
             </div>
-            {settings.recentRepositories.length > 0 && <div className="recent-workspaces"><strong>Recent workspaces</strong>{settings.recentRepositories.map((path) => <button key={path} onClick={() => void openRepository(path)}><FolderGit2 size={15} />{path}</button>)}</div>}
+            {settings.recentRepositories.length > 0 && <div className="recent-workspaces"><strong>Recent workspaces</strong>{settings.recentRepositories.map((path) => <button className={workspaceDraft === path ? 'selected' : ''} key={path} onClick={() => setWorkspaceDraft(path)} onDoubleClick={() => void openRepository(path)}><FolderGit2 size={15} /><span><b>{parts(path).name}</b>{path}</span></button>)}</div>}
           </div>
-          <div className="dialog-footer"><button onClick={() => setInitOpen(true)} disabled={!health.available || Boolean(busy)}>Init...</button><button onClick={() => setCloneOpen(true)} disabled={!health.available || Boolean(busy)}>Clone...</button><button onClick={() => void chooseRepository()} disabled={!health.available || Boolean(busy)}>{busy ? <LoaderCircle className="spin" size={15} /> : null}Open Workspace</button></div>
+          <div className="dialog-footer"><span className="modal-hint">Each P4Git window uses one independent Workspace.</span><button onClick={() => setInitOpen(true)} disabled={!health.available || Boolean(busy)}>Init...</button><button onClick={() => setCloneOpen(true)} disabled={!health.available || Boolean(busy)}>Clone...</button><button className="primary-classic" onClick={() => workspaceDraft ? void openRepository(workspaceDraft) : void chooseRepository()} disabled={!health.available || Boolean(busy)}>{busy ? <LoaderCircle className="spin" size={15} /> : null}Open Workspace</button></div>
         </section>
         {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} onComplete={(path) => { setCloneOpen(false); void openRepository(path) }} />}
         {initOpen && <InitDialog onClose={() => setInitOpen(false)} onComplete={(path) => { setInitOpen(false); void openRepository(path) }} />}
@@ -1991,7 +1990,7 @@ export default function App(): React.JSX.Element {
         onDiff={() => void showSelectedDiff()}
         onTimelapse={() => selectedPath && void showTimelapse(selectedPath, treeMode === 'depot' ? depotRef : 'HEAD')}
         onRevgraph={() => openMainTab('stream')}
-        onCancel={() => void window.p4git.cancelOperations().then((count) => appendLog(`Cancelled ${count} running Git process(es).`, 'success'))}
+        onCancel={() => void window.p4git.cancelOperations(repository.root).then((count) => appendLog(`Cancelled ${count} running Git process(es) for this Workspace.`, 'success'))}
       />
 
       <div className="location-bar">
@@ -2087,7 +2086,7 @@ export default function App(): React.JSX.Element {
       {selectiveMergeEditor && <SelectiveMergeDialog value={selectiveMergeEditor} onChange={setSelectiveMergeEditor} onClose={() => setSelectiveMergeEditor(undefined)} onMerge={() => void runSelectiveMerge()} busy={busy === 'selective-merge'} currentBranch={repository.branch} />}
       {revisionRequest && <GetRevisionDialog repoPath={repository.root} paths={revisionRequest.paths} initial={revisionRequest.initial} suggestions={[repository.branch, repository.upstream ?? '', 'HEAD', ...branches.map((branch) => branch.name), ...history.slice(0, 30).map((commit) => commit.hash)].filter(Boolean)} onClose={() => setRevisionRequest(undefined)} onApply={async (revision, paths) => { await perform('get-revision', `git restore --source=${revision.hash} --worktree -- ${paths.join(' ')}`, () => window.p4git.restoreFromRef(repository.root, revision.hash, paths), `Restored ${paths.length} target(s) from ${revision.shortHash}.`) }} />}
       {lfsOpen && <LfsLocksDialog repoPath={repository.root} onClose={() => setLfsOpen(false)} onStatus={setLfsStatus} />}
-      {taskCenterOpen && <TaskCenter tasks={tasks} onClose={() => setTaskCenterOpen(false)} onCancel={() => void window.p4git.cancelOperations().then((count) => appendLog(`Cancellation requested for ${count} process(es).`, 'success'))} onClear={() => setTasks((current) => current.filter((task) => task.state === 'running'))} />}
+      {taskCenterOpen && <TaskCenter tasks={tasks} onClose={() => setTaskCenterOpen(false)} onCancel={() => void window.p4git.cancelOperations(repository.root).then((count) => appendLog(`Cancellation requested for ${count} process(es) in this Workspace.`, 'success'))} onClear={() => setTasks((current) => current.filter((task) => task.state === 'running'))} />}
       {error && <ErrorToast message={error} close={() => setError(undefined)} />}
     </main>
   )
@@ -2501,7 +2500,7 @@ function WorkspacesTable({ paths, active, filter, onOpen, onContext }: { paths: 
 
 function DetailContent({ tab, pending, changelists, commit, branch, entry, commitFiles, diff, diffLoading, issues, onOpenIssue }: { tab: DetailTab; pending?: PendingSelection; changelists: LocalChangelist[]; commit?: CommitInfo; branch?: BranchInfo; entry?: WorkspaceEntry; commitFiles: RevisionFile[]; diff: string; diffLoading: boolean; issues: GitLabOverview['issues']; onOpenIssue: (url: string) => void }): React.JSX.Element {
   const pendingList = pending?.staged ? 'Ready to submit' : pending?.changelistId ? changelists.find((item) => item.id === pending.changelistId)?.name ?? 'Local changelist' : 'Default changelist'
-  if (tab === 'diff') return <pre className="detail-diff">{diffLoading ? 'Loading diff...' : diff || 'Select a pending file and choose Diff.'}</pre>
+  if (tab === 'diff') return <SideBySideDiff content={diffLoading ? 'Loading diff...' : diff || 'Select a pending file and choose Diff.'} compact />
   if (tab === 'jobs') return issues.length ? <div className="issue-list">{issues.map((issue) => <button key={issue.iid} onClick={() => onOpenIssue(issue.webUrl)}><strong>#{issue.iid}</strong><span>{issue.title}</span><em>{issue.state}</em></button>)}</div> : <div className="detail-empty">Configure Tools &gt; GitLab to use GitLab Issues as P4V Jobs.</div>
   if (tab === 'files') {
     if (pending) return <div className="detail-line"><File size={14} /><strong>{pending.change.path}</strong><span>{pendingList}</span></div>
@@ -2515,12 +2514,12 @@ function DetailContent({ tab, pending, changelists, commit, branch, entry, commi
   return <div className="detail-empty">Select an item to view details.</div>
 }
 
-function HistoryTable({ view, filter, selected, onSelect, onOpen, onContext }: { view: { path: string; commits: CommitInfo[]; isDirectory: boolean }; filter: string; selected?: string; onSelect: (commit: CommitInfo) => void; onOpen: (commit: CommitInfo) => void; onContext: (commit: CommitInfo, commits: CommitInfo[]) => void }): React.JSX.Element {
+function HistoryTable({ view, filter, selected, onSelect, onOpen, onContext }: { view: { path: string; commits: CommitInfo[]; isDirectory: boolean; source: TreeMode; ref: string }; filter: string; selected?: string; onSelect: (commit: CommitInfo) => void; onOpen: (commit: CommitInfo) => void; onContext: (commit: CommitInfo, commits: CommitInfo[]) => void }): React.JSX.Element {
   const [sort, setSort] = useState<'revision' | 'change' | 'date' | 'author' | 'description'>('revision')
   const rows = view.commits.filter((commit) => matchesFilter([commit.shortHash, commit.hash, commit.author, commit.email, commit.date, commit.subject, ...commit.refs], filter)).sort((left, right) => sort === 'change' ? left.shortHash.localeCompare(right.shortHash) : sort === 'date' ? right.date.localeCompare(left.date) : sort === 'author' ? left.author.localeCompare(right.author) : sort === 'description' ? left.subject.localeCompare(right.subject) : view.commits.indexOf(left) - view.commits.indexOf(right))
   const selection = useTableSelection(rows.map((commit) => commit.hash))
   return <div className="history-layout">
-    <div className="history-path"><FileText size={15} /><strong>{view.path === '.' ? 'Repository History' : 'File History'}</strong><span>{view.path}</span><em>Double-click a revision to diff it against its previous revision.</em></div>
+    <div className="history-path"><FileText size={15} /><strong>{view.path === '.' ? 'Repository History' : 'File History'}</strong><span>{view.path}</span><code>{view.source === 'depot' ? `Depot · ${view.ref}` : 'Workspace · HEAD'}</code><em>Double-click a revision to diff it against its previous revision.</em></div>
     <div className="classic-table history-table" tabIndex={0} onKeyDown={selection.keyDown}>
       <div className="table-head sortable"><button onClick={() => setSort('revision')}>Revision</button><button onClick={() => setSort('change')}>Change</button><button onClick={() => setSort('date')}>Date</button><button onClick={() => setSort('author')}>Submitted By</button><button onClick={() => setSort('description')}>Description</button></div>
       {rows.map((commit) => {
@@ -2553,7 +2552,7 @@ function PreferencesDialog({ health, value, onChange, onChooseGit, onChooseDiff,
     <div className="modal-title"><Settings size={16} /><strong>Preferences</strong><button onClick={onCancel}><X size={16} /></button></div>
     <div className="preferences-body">
       <fieldset><legend>Git executable</legend><div className="preference-path"><input readOnly value={health.path ?? ''} placeholder="Git has not been configured" /><button onClick={onChooseGit}>Change...</button></div><p>{health.version ?? health.error ?? 'P4Git verifies Git before saving it.'}</p></fieldset>
-      <fieldset><legend>External Diff tool</legend><div className="preference-path"><input readOnly value={value.diffPath} placeholder="Not configured — use the built-in Diff Summary" /><button onClick={onChooseDiff}>Browse...</button><button onClick={() => onChange({ ...value, diffPath: '', diffArguments: DEFAULT_DIFF_TOOL_ARGUMENTS })} disabled={!value.diffPath}>Disable</button></div><label>Arguments template:</label><textarea value={value.diffArguments} onChange={(event) => onChange({ ...value, diffArguments: event.target.value })} disabled={!value.diffPath} /><p>Placeholders: {'{left}'}, {'{right}'}, {'{leftTitle}'}, {'{rightTitle}'}.</p>{!validDiff && <p className="preference-error">The template must contain {'{left}'} and {'{right}'}.</p>}</fieldset>
+      <fieldset><legend>External Diff tool</legend><div className="preference-path"><input readOnly value={value.diffPath} placeholder="Not configured — use the built-in side-by-side Diff" /><button onClick={onChooseDiff}>Browse...</button><button onClick={() => onChange({ ...value, diffPath: '', diffArguments: DEFAULT_DIFF_TOOL_ARGUMENTS })} disabled={!value.diffPath}>Disable</button></div><label>Arguments template:</label><textarea value={value.diffArguments} onChange={(event) => onChange({ ...value, diffArguments: event.target.value })} disabled={!value.diffPath} /><p>Beyond Compare 5/4 is auto-detected on Windows. Placeholders: {'{left}'}, {'{right}'}, {'{leftTitle}'}, {'{rightTitle}'}.</p>{!validDiff && <p className="preference-error">The template must contain {'{left}'} and {'{right}'}.</p>}</fieldset>
       <fieldset><legend>External 3-way Merge tool</legend><div className="preference-path"><input readOnly value={value.mergePath} placeholder="Not configured — use the built-in Resolve editor" /><button onClick={onChooseMerge}>Browse...</button><button onClick={() => onChange({ ...value, mergePath: '', mergeArguments: DEFAULT_MERGE_TOOL_ARGUMENTS })} disabled={!value.mergePath}>Disable</button></div><label>Arguments template:</label><textarea value={value.mergeArguments} onChange={(event) => onChange({ ...value, mergeArguments: event.target.value })} disabled={!value.mergePath} /><p>Required placeholders: {'{base}'}, {'{ours}'}, {'{theirs}'}, {'{result}'}. The tool must exit after saving the result.</p>{!validMerge && <p className="preference-error">All four Merge placeholders are required.</p>}</fieldset>
       <fieldset><legend>Appearance and layout</legend><div className="appearance-grid"><label>Theme<select value={value.appearance.theme} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, theme: event.target.value as AppearanceSettings['theme'] } })}><option value="classic">P4V Classic</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Density<select value={value.appearance.density} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, density: event.target.value as AppearanceSettings['density'] } })}><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></label><label>Text size<input type="range" min="0.85" max="1.35" step="0.05" value={value.appearance.fontScale} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, fontScale: Number(event.target.value) } })} /><span>{Math.round(value.appearance.fontScale * 100)}%</span></label><label className="check-filter"><input type="checkbox" checked={value.appearance.showToolbarLabels} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, showToolbarLabels: event.target.checked } })} />Show toolbar labels</label></div><button onClick={() => onChange({ ...value, appearance: DEFAULT_APPEARANCE })}>Reset layout and columns</button><p>Drag the vertical workspace divider, detail divider, log divider, and table column edges. Saved sizes are restored on next launch.</p></fieldset>
     </div>
@@ -2717,7 +2716,35 @@ function CommitDetailsDialog({ value, title = 'Commit Details', onClose, onFileC
 }
 
 function TextDiffDialog({ title, content, onClose }: { title: string; content: string; onClose: () => void }): React.JSX.Element {
-  return <div className="modal-backdrop nested-modal"><section className="text-diff-dialog"><div className="modal-title"><FileDiff size={16} /><strong>{title}</strong><button onClick={onClose}><X size={16} /></button></div><pre>{content || 'No textual differences.'}</pre><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+  return <div className="modal-backdrop nested-modal"><section className="text-diff-dialog"><div className="modal-title"><FileDiff size={16} /><strong>{title}</strong><button onClick={onClose}><X size={16} /></button></div><SideBySideDiff content={content} /><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+}
+
+function DiffText({ cell, other }: { cell: DiffCell; other: DiffCell }): React.JSX.Element {
+  const segments = cell.tone === 'removed' || cell.tone === 'added' ? characterSegments(cell.text, other.text) : [{ text: cell.text, changed: false }]
+  return <code>{segments.map((segment, index) => segment.changed ? <mark key={index}>{segment.text || ' '}</mark> : <span key={index}>{segment.text || (index === 0 ? ' ' : '')}</span>)}</code>
+}
+
+function SideBySideDiff({ content, compact = false }: { content: string; compact?: boolean }): React.JSX.Element {
+  const parsed = useMemo(() => parseUnifiedDiff(content), [content])
+  const [difference, setDifference] = useState(0)
+  const [lineNumbers, setLineNumbers] = useState(true)
+  const rowRefs = useRef(new Map<number, HTMLDivElement>())
+  useEffect(() => setDifference(0), [content])
+  const go = (delta: number): void => {
+    if (!parsed.differences.length) return
+    const next = (difference + delta + parsed.differences.length) % parsed.differences.length
+    setDifference(next)
+    rowRefs.current.get(parsed.differences[next])?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }
+  return <div className={`side-diff ${compact ? 'compact' : ''}`}>
+    <div className="side-diff-toolbar"><button onClick={() => go(-1)} disabled={!parsed.differences.length}>↑ Previous Difference</button><button onClick={() => go(1)} disabled={!parsed.differences.length}>↓ Next Difference</button><span>{parsed.differences.length ? `${difference + 1} of ${parsed.differences.length} differences` : 'No differences'}</span><label><input type="checkbox" checked={lineNumbers} onChange={(event) => setLineNumbers(event.target.checked)} />Line numbers</label></div>
+    <div className="side-diff-head"><strong title={parsed.leftTitle}>{parsed.leftTitle}</strong><strong title={parsed.rightTitle}>{parsed.rightTitle}</strong></div>
+    <div className={`side-diff-scroll ${lineNumbers ? '' : 'hide-numbers'}`}>
+      {parsed.message ? <div className="side-diff-message">{parsed.message}</div> : parsed.rows.map((row, index) => row.kind === 'header'
+        ? <div className="side-diff-hunk" key={`${row.header}-${index}`}>{row.header}</div>
+        : <div ref={(node) => { if (node) rowRefs.current.set(index, node); else rowRefs.current.delete(index) }} className={`side-diff-row ${row.different ? 'different' : ''} ${parsed.differences[difference] === index ? 'current-difference' : ''}`} key={index}><span className={`line-number ${row.left.tone}`}>{row.left.line ?? ''}</span><div className={`diff-cell ${row.left.tone}`}><DiffText cell={row.left} other={row.right} /></div><span className={`line-number ${row.right.tone}`}>{row.right.line ?? ''}</span><div className={`diff-cell ${row.right.tone}`}><DiffText cell={row.right} other={row.left} /></div></div>)}
+    </div>
+  </div>
 }
 
 function PendingDiffDialog({ value, onChange, onClose }: { value: PendingDiffView; onChange: (value: PendingDiffView) => void; onClose: () => void }): React.JSX.Element {
@@ -2728,7 +2755,7 @@ function PendingDiffDialog({ value, onChange, onClose }: { value: PendingDiffVie
     const item = value.items[Math.max(0, Math.min(value.items.length - 1, index))]
     if (item) onChange({ ...value, activeKey: item.key })
   }
-  return <div className="modal-backdrop"><section className="pending-diff-dialog" role="dialog" aria-modal="true"><div className="modal-title"><FileDiff size={16} /><strong>Diff Selected Files ({value.items.length})</strong><span>{loaded}/{value.items.length} loaded</span><button onClick={onClose}><X size={16} /></button></div><div className="pending-diff-body"><aside><div className="pending-diff-head">Files</div>{value.items.map((item) => <button key={item.key} className={item.key === active?.key ? 'active' : ''} onClick={() => onChange({ ...value, activeKey: item.key })} title={item.change.path}><i className={`change-mark ${item.change.kind}`}>{changeCode(item.change)}</i><span>{item.change.path}</span><em>{item.staged ? 'HEAD ↔ Git index' : item.change.kind === 'untracked' ? 'Empty ↔ Workspace' : item.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</em>{item.error ? <AlertTriangle size={13} /> : item.content === undefined ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</button>)}</aside><section><header><strong title={active?.change.path}>{active?.change.path}</strong><span>{active?.staged ? 'HEAD ↔ Git index' : active?.change.kind === 'untracked' ? 'Empty ↔ Workspace' : active?.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</span></header><pre className={active?.error ? 'error' : ''}>{active?.error ?? active?.content ?? 'Loading diff...'}</pre></section></div><div className="modal-actions"><button onClick={() => selectIndex(activeIndex - 1)} disabled={activeIndex <= 0}>Previous File</button><button onClick={() => selectIndex(activeIndex + 1)} disabled={activeIndex >= value.items.length - 1}>Next File</button><span>{activeIndex + 1} of {value.items.length}</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
+  return <div className="modal-backdrop"><section className="pending-diff-dialog" role="dialog" aria-modal="true"><div className="modal-title"><FileDiff size={16} /><strong>Diff Selected Files ({value.items.length})</strong><span>{loaded}/{value.items.length} loaded</span><button onClick={onClose}><X size={16} /></button></div><div className="pending-diff-body"><aside><div className="pending-diff-head">Files</div>{value.items.map((item) => <button key={item.key} className={item.key === active?.key ? 'active' : ''} onClick={() => onChange({ ...value, activeKey: item.key })} title={item.change.path}><i className={`change-mark ${item.change.kind}`}>{changeCode(item.change)}</i><span>{item.change.path}</span><em>{item.staged ? 'HEAD ↔ Git index' : item.change.kind === 'untracked' ? 'Empty ↔ Workspace' : item.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</em>{item.error ? <AlertTriangle size={13} /> : item.content === undefined ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</button>)}</aside><section><header><strong title={active?.change.path}>{active?.change.path}</strong><span>{active?.staged ? 'HEAD ↔ Git index' : active?.change.kind === 'untracked' ? 'Empty ↔ Workspace' : active?.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</span></header><SideBySideDiff content={active?.error ?? active?.content ?? 'Loading diff...'} /></section></div><div className="modal-actions"><button onClick={() => selectIndex(activeIndex - 1)} disabled={activeIndex <= 0}>Previous File</button><button onClick={() => selectIndex(activeIndex + 1)} disabled={activeIndex >= value.items.length - 1}>Next File</button><span>{activeIndex + 1} of {value.items.length}</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function SelectiveMergeDialog({ value, onChange, onClose, onMerge, busy, currentBranch }: { value: SelectiveMergeEditorState; onChange: (value: SelectiveMergeEditorState) => void; onClose: () => void; onMerge: () => void; busy: boolean; currentBranch: string }): React.JSX.Element {

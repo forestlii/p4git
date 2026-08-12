@@ -69,6 +69,7 @@ describe('GitService Git-native operations', () => {
 
     const fileHistory = await subject.fileHistory(root, 'tracked.txt')
     expect(fileHistory.map((commit) => commit.subject)).toEqual(['second revision', 'initial'])
+    expect((await subject.fileHistory(root, 'tracked.txt', 100, fileHistory[1].hash)).map((commit) => commit.subject)).toEqual(['initial'])
     expect((await subject.fileHistory(root, '.')).length).toBe(2)
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[0].hash)).toContain('+second revision')
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[1].hash, 'HEAD')).toContain('+second revision')
@@ -85,6 +86,23 @@ describe('GitService Git-native operations', () => {
       rightTitle: 'Workspace'
     })).resolves.toBe(true)
   }, 15_000)
+
+  it('returns a unified patch for an untracked text file', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await writeFile(join(root, 'untracked.txt'), 'first\nsecond\n', 'utf8')
+
+    const patch = normalizeLines(await subject.diff({
+      repoPath: root,
+      filePath: 'untracked.txt',
+      staged: false,
+      untracked: true
+    }))
+    expect(patch).toContain('--- /dev/null')
+    expect(patch).toContain('+++ b/untracked.txt')
+    expect(patch).toContain('@@ -0,0 +1,2 @@')
+    expect(patch).toContain('+first\n+second')
+  })
 
   it('creates, lists, applies, and drops a stash, then reads reflog and tags', async () => {
     const root = await createRepository()
