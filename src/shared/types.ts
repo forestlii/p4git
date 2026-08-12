@@ -519,6 +519,7 @@ export interface P4GitApi {
   dropStash(repoPath: string, ref: string): Promise<string>
   getReflog(repoPath: string, limit?: number): Promise<ReflogEntry[]>
   cherryPick(repoPath: string, ref: string): Promise<string>
+  cherryPickCommits(repoPath: string, refs: string[]): Promise<string>
   merge(repoPath: string, ref: string): Promise<string>
   rebase(repoPath: string, ref: string): Promise<string>
   createTag(repoPath: string, name: string, ref: string): Promise<void>

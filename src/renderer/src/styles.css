@@ -1056,6 +1056,15 @@ textarea:focus-visible {
 .compare-columns section > strong { display: block; padding: 8px; border-bottom: 1px solid #aaa; background: #eee; }
 .compare-columns section > div { grid-template-columns: 82px minmax(0, 1fr) 110px; }
 .compare-columns p { padding: 15px; color: #777; }
+.compare-help { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-bottom: 1px solid #aaa; background: #f5f5f5; }
+.compare-help span { flex: 1; color: #4f5d63; }
+.compare-help button { height: 25px; border: 1px solid #888; background: linear-gradient(#fff, #e3e3e3); }
+.compare-commit { display: grid; width: 100%; min-height: 27px; grid-template-columns: 20px 82px minmax(0, 1fr) 110px; align-items: center; gap: 7px; padding: 3px 8px; border: 0; border-bottom: 1px solid #eee; color: inherit; background: white; text-align: left; }
+.compare-commit:hover { background: #edf6fa; }
+.compare-commit.selected { background: #cde8f6; }
+.compare-commit input { width: 14px; height: 14px; margin: 0; pointer-events: none; }
+.compare-commit span,
+.compare-commit em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .conflict-body {
   display: grid;

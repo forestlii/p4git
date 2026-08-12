@@ -2,6 +2,20 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.5.0 — 2026-08-12
+
+### English
+
+- Added selective branch merging from **Compare with Current** and Revision Graph, with Ctrl/Shift/Ctrl+A commit selection.
+- Applies selected commits in parent-aware order, rejects already-applied equivalent patches, and completes conflict-free sequences automatically.
+- Integrates with Resolve so **Continue** resumes all queued commits after conflicts are resolved.
+
+### 中文
+
+- 在 **Compare with Current** 与 Revision Graph 中新增选择性分支合并，支持 Ctrl/Shift/Ctrl+A 多选提交。
+- 按父子依赖顺序应用提交，拦截已经合入的等价补丁；无冲突时自动完成整个队列。
+- 与 Resolve 流程集成；解决冲突后点击 **Continue** 会继续完成剩余提交。
+
 ## 0.4.1 — 2026-08-12
 
 - Fixed **New Branch from Here** by replacing the unreliable Electron browser prompt with an in-app branch dialog.

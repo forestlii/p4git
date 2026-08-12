@@ -449,6 +449,38 @@ export class GitService {
     return this.run(root, ['cherry-pick', this.safeRef(ref)])
   }
 
+  async cherryPickCommits(repoPath: string, refs: string[]): Promise<string> {
+    const root = await this.repositoryRoot(repoPath)
+    const safeRefs = [...new Set(refs.map((ref) => this.safeRef(ref)))]
+    if (!safeRefs.length) throw new Error('请选择至少一个要合并的提交。')
+    const commits: Array<{ hash: string; parents: string[] }> = []
+    for (const ref of safeRefs) {
+      const hash = (await this.run(root, ['rev-parse', '--verify', `${ref}^{commit}`]).catch(() => { throw new Error(`找不到提交：${ref}`) })).trim()
+      const contained = await this.run(root, ['merge-base', '--is-ancestor', hash, 'HEAD']).then(() => true).catch(() => false)
+      const equivalent = contained ? true : await this.run(root, ['cherry', 'HEAD', hash])
+        .then((output) => output.split(/\r?\n/).some((line) => line === `- ${hash}`))
+        .catch(() => false)
+      if (equivalent) throw new Error(`提交 ${ref.slice(0, 10)} 已经包含在当前分支中，无需再次合并。`)
+      const parents = (await this.run(root, ['show', '-s', '--format=%P', hash])).trim().split(/\s+/).filter(Boolean)
+      if (parents.length > 1) throw new Error(`提交 ${ref.slice(0, 10)} 是 Merge commit，选择性合并需要指定 mainline，当前版本暂不支持。`)
+      commits.push({ hash, parents })
+    }
+    const selected = new Map(commits.map((commit) => [commit.hash, commit]))
+    const ordered: string[] = []
+    const visited = new Set<string>()
+    const visit = (commit: { hash: string; parents: string[] }): void => {
+      if (visited.has(commit.hash)) return
+      visited.add(commit.hash)
+      for (const parent of commit.parents) {
+        const selectedParent = selected.get(parent)
+        if (selectedParent) visit(selectedParent)
+      }
+      ordered.push(commit.hash)
+    }
+    for (const commit of commits) visit(commit)
+    return this.run(root, ['cherry-pick', ...ordered])
+  }
+
   async merge(repoPath: string, ref: string): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
     return this.run(root, ['merge', '--no-edit', this.safeRef(ref)])

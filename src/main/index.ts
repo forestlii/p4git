@@ -273,7 +273,7 @@ function contextMenuTemplate(
         item('Revert This Commit...', 'revert-commit'),
         separator,
         gitMenu([
-          item('Cherry-pick', 'git-cherry-pick'),
+          item(request.multiple ? 'Merge Selected Commits into Current Branch...' : 'Merge Commit into Current Branch...', 'git-cherry-pick'),
           item('New Branch from Commit...', 'git-branch-from-commit'),
           item('Create Tag...', 'git-tag'),
           separator,
@@ -542,6 +542,9 @@ function registerIpc(): void {
   )
   ipcMain.handle('git:cherry-pick', (_event, repoPath: string, ref: string) =>
     git.cherryPick(repoPath, ref)
+  )
+  ipcMain.handle('git:cherry-pick-commits', (_event, repoPath: string, refs: string[]) =>
+    git.cherryPickCommits(repoPath, refs)
   )
   ipcMain.handle('git:merge', (_event, repoPath: string, ref: string) => git.merge(repoPath, ref))
   ipcMain.handle('git:rebase', (_event, repoPath: string, ref: string) => git.rebase(repoPath, ref))

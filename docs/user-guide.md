@@ -159,6 +159,8 @@ Use **Tools > Git Settings** to select Git for Windows or the `git.exe` bundled 
 
 **Connection > Push** first opens a preview where you select the remote, local/remote branch mapping, and upstream behavior, then inspect outgoing commits. **Tools > Git > Manage Remotes** adds, renames, edits Fetch/Push URLs, or removes remotes. Branch context menus include Rename and **Compare with Current**, which lists Incoming and Outgoing commits separately.
 
+To bring only specific work from another branch into the branch currently checked out, open **Compare with Current**, select one or more Incoming commits with `Ctrl`, `Shift`, or `Ctrl+A`, and choose **Merge Selected into <current>**. The same action is available by multi-selecting commits in Revision Graph and opening the context menu. P4Git applies commits as Git cherry-picks in parent/oldest-first order. A clean sequence completes automatically; if a commit conflicts, Resolve opens and **Continue** resumes the queued commits after all conflicts are resolved. Merge commits are not selectable for this workflow because Git requires an explicit mainline parent.
+
 **Tools > Git > Amend Last Commit** changes the latest message and includes currently staged files. Amend changes the commit ID and should not be used on a commit already shared with teammates.
 
 Terminal prompts are disabled. HTTPS credentials must already be available through Git Credential Manager, and SSH authentication must already work through the configured key or agent.
