@@ -529,6 +529,7 @@ function registerIpc(): void {
   ipcMain.handle('git:file-revision-diff', (_event, repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     git.fileRevisionDiff(repoPath, filePath, ref, compareRef)
   )
+  ipcMain.handle('git:diff-document', (_event, request: ExternalDiffRequest) => git.diffDocument(request))
   ipcMain.handle('git:external-diff', (_event, request: ExternalDiffRequest) => git.launchExternalDiff(request))
   ipcMain.handle('git:blame', (_event, repoPath: string, filePath: string, ref?: string) =>
     git.blame(repoPath, filePath, ref)

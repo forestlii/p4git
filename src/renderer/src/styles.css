@@ -1172,7 +1172,8 @@ textarea:focus-visible {
 .commit-files > button:hover { background: #dceff8; }
 .commit-files > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-file-status { display: flex; align-items: center; gap: 5px; }
-.text-diff-dialog > .side-diff { height: min(660px, calc(100vh - 150px)); }
+.text-diff-dialog > .side-diff,
+.text-diff-dialog > .codemirror-diff { height: min(660px, calc(100vh - 150px)); }
 .pending-diff-dialog .modal-title > span { margin-left: auto; color: #657178; font-size: 11px; }
 .pending-diff-dialog .modal-title > button { margin-left: 0; }
 .pending-diff-body { display: grid; height: min(680px, calc(100vh - 145px)); grid-template-columns: minmax(260px, 32%) minmax(0, 1fr); background: white; }
@@ -1189,7 +1190,35 @@ textarea:focus-visible {
 .pending-diff-body > section > header { display: grid; min-width: 0; align-content: center; gap: 2px; padding: 5px 9px; border-bottom: 1px solid #aaa; background: #f3f3f3; }
 .pending-diff-body > section > header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pending-diff-body > section > header span { color: #68757b; font-size: 10px; }
-.pending-diff-body > section > .side-diff { min-height: 0; }
+.pending-diff-body > section > .side-diff,
+.pending-diff-body > section > .codemirror-diff { min-height: 0; }
+
+.codemirror-diff { display: grid; min-width: 0; min-height: 0; grid-template-rows: 30px 27px minmax(0, 1fr); overflow: hidden; background: white; color: #263238; }
+.codemirror-diff.compact { width: 100%; height: 100%; }
+.codemirror-diff-toolbar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; border-bottom: 1px solid #9aa2a6; background: linear-gradient(#fafafa, #e5e5e5); font-size: 11px; }
+.codemirror-diff-toolbar button { height: 23px; border: 1px solid #92999d; background: linear-gradient(#fff, #e3e3e3); }
+.codemirror-diff-toolbar > span { color: #58676e; }
+.codemirror-diff-toolbar label { display: flex; align-items: center; gap: 4px; margin-left: auto; white-space: nowrap; }
+.codemirror-diff-toolbar em { overflow: hidden; color: #6d787d; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.codemirror-diff-head { display: grid; min-width: 0; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #8d969a; background: #dce4e8; }
+.codemirror-diff-head strong { overflow: hidden; padding: 5px 9px; border-right: 1px solid #8d969a; text-overflow: ellipsis; white-space: nowrap; }
+.codemirror-merge-host { min-width: 0; min-height: 0; overflow: auto; }
+.codemirror-merge-host > .cm-mergeView { height: 100%; min-width: 760px; overflow: auto; }
+.codemirror-merge-host .cm-mergeViewEditors { min-height: 100%; }
+.codemirror-merge-host .cm-mergeViewEditor { min-width: 360px; border-right: 1px solid #9da5a9; }
+.codemirror-merge-host .cm-editor { min-width: 0; }
+.codemirror-merge-host .cm-search { font-family: "Segoe UI", sans-serif; }
+.codemirror-merge-host .cm-collapsedLines { background: #dcebf2; color: #356f89; }
+.codemirror-diff-message { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px; color: #6a7479; }
+.theme-dark .codemirror-diff,
+.theme-dark .codemirror-merge-host { color: #d8dde0; background: #202629; }
+.theme-dark .codemirror-diff-toolbar { border-color: #596267; color: #d8dde0; background: #30383c; }
+.theme-dark .codemirror-diff-toolbar > span,
+.theme-dark .codemirror-diff-toolbar em { color: #aeb8bd; }
+.theme-dark .codemirror-diff-head { border-color: #596267; background: #374247; }
+.theme-dark .codemirror-diff-head strong,
+.theme-dark .codemirror-merge-host .cm-mergeViewEditor { border-color: #596267; }
+.theme-dark .codemirror-merge-host .cm-collapsedLines { color: #acd8ea; background: #304b57; }
 
 .side-diff { display: grid; min-width: 0; min-height: 0; grid-template-rows: 30px 27px minmax(0, 1fr); overflow: hidden; background: white; color: #263238; font: 12px/1.45 Consolas, monospace; }
 .side-diff.compact { width: 100%; height: 100%; }

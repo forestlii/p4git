@@ -14,6 +14,7 @@ import type {
   ChangelistState,
   CommitDetails,
   CommitInfo,
+  DiffDocument,
   DiffRequest,
   ExternalDiffRequest,
   ExternalDiffSource,
@@ -706,6 +707,31 @@ export class GitService {
       return this.run(root, ['diff', '--no-ext-diff', '--no-color', safeRef, this.safeRef(compareRef), '--', safePath])
     }
     return this.run(root, ['show', '--format=', '--no-ext-diff', '--no-color', safeRef, '--', safePath])
+  }
+
+  async diffDocument(request: ExternalDiffRequest): Promise<DiffDocument> {
+    const root = await this.repositoryRoot(request.repoPath)
+    const safePath = this.safeRelativePath(root, request.filePath)
+    const leftSafePath = request.leftFilePath ? this.safeRelativePath(root, request.leftFilePath) : safePath
+    const rightSafePath = request.rightFilePath ? this.safeRelativePath(root, request.rightFilePath) : safePath
+    const [left, right] = await Promise.all([
+      this.readDiffSource(root, leftSafePath, request.left),
+      this.readDiffSource(root, rightSafePath, request.right)
+    ])
+    const binary = left.includes(0) || right.includes(0)
+    const sizeLimit = 8 * 1024 * 1024
+    const tooLarge = left.byteLength > sizeLimit || right.byteLength > sizeLimit
+    return {
+      filePath: safePath,
+      leftTitle: request.leftTitle,
+      rightTitle: request.rightTitle,
+      left: binary || tooLarge ? '' : left.toString('utf8'),
+      right: binary || tooLarge ? '' : right.toString('utf8'),
+      binary,
+      message: binary
+        ? 'Binary file comparison is not available in the built-in text Diff.'
+        : tooLarge ? 'The built-in Diff is limited to 8 MB per side. Configure an external Diff tool for this file.' : undefined
+    }
   }
 
   async launchExternalDiff(request: ExternalDiffRequest): Promise<boolean> {
@@ -1517,19 +1543,22 @@ export class GitService {
   }
 
   private async materializeDiffSource(root: string, safePath: string, source: ExternalDiffSource, destination: string): Promise<void> {
-    let content: Buffer
+    const content = await this.readDiffSource(root, safePath, source)
+    await writeFile(destination, content)
+    await chmod(destination, 0o444).catch(() => undefined)
+  }
+
+  private async readDiffSource(root: string, safePath: string, source: ExternalDiffSource): Promise<Buffer> {
     if (source.kind === 'empty') {
-      content = Buffer.alloc(0)
+      return Buffer.alloc(0)
     } else if (source.kind === 'workspace') {
-      content = await readFile(join(root, safePath)).catch(() => Buffer.alloc(0))
+      return readFile(join(root, safePath)).catch(() => Buffer.alloc(0))
     } else {
       const object = source.kind === 'index'
         ? `:${safePath}`
         : `${this.safeRef(source.ref)}${source.kind === 'parent' ? '^' : ''}:${safePath}`
-      content = await this.runBuffer(root, ['show', object]).catch(() => Buffer.alloc(0))
+      return this.runBuffer(root, ['show', object]).catch(() => Buffer.alloc(0))
     }
-    await writeFile(destination, content)
-    await chmod(destination, 0o444).catch(() => undefined)
   }
 
   private async cleanupDiffTemps(): Promise<void> {

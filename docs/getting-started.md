@@ -58,7 +58,7 @@ If Git is not found, select **Choose git.exe** and browse to a compatible execut
 
 1. Open **Pending**. Optionally choose **New Changelist...** and create a list for the task.
 2. Drag files into that list or use **Move to Changelist** in the file context menu.
-3. Double-click a file or choose **Diff** to review it in the Beyond Compare-style side-by-side Diff pane.
+3. Double-click a file or choose **Diff** to review it in the bundled CodeMirror MergeView.
 4. Right-click the list and choose **Submit Changelist**. Review the exact files, enter a description, and submit.
 
 Submit now follows P4V semantics: it Fetches, creates the commit, rebases safely when the server moved, Pushes, and verifies that the remote branch advertises the exact commit. P4Git reports success only after that verification. Use **Tools > Git > Commit Locally** only when you intentionally want a Git commit that is not sent to the server.

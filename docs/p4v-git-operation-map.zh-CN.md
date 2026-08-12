@@ -21,8 +21,8 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Add | `git add` 未跟踪文件 | 已实现 |
 | Delete | `git rm`，或登记已经发生的磁盘删除 | 已实现 |
 | Revert | 已跟踪文件恢复到 `HEAD`；明确确认的新增/未跟踪文件从磁盘删除 | 已实现，有确认 |
-| Diff | 在 Beyond Compare 风格对齐双栏视图中显示 working tree、index、Depot ref 和 commit diff | 已实现 |
-| 外部 Diff 工具 | 自动发现 Beyond Compare 5/4 或使用用户配置的程序，并保留内置双栏回退 | 文件 Diff 已实现 |
+| Diff | 使用内置 MIT 开源 CodeMirror MergeView 显示完整 working tree、index、Depot ref 和 commit 文件双栏比较 | 已实现 |
+| 外部 Diff 工具 | 自动发现 Beyond Compare 5/4 或使用用户配置的程序，并保留 CodeMirror 内置回退 | 文件 Diff 已实现 |
 | Time-lapse View | `git blame` 逐行作者、提交和时间 | 已实现，简化版 |
 | Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，支持 ref 模糊筛选、分支栏调宽，以及从本地或远程分支 Work in this Stream | 已实现 |
 | 从其他分支选择变更 | 查看提交/文件、过滤等价补丁，再把所选改动不提交地放入新本地 Changelist；Resolve 与 Continue 保留剩余队列 | 已实现；Merge commit 仍需单独指定 mainline |

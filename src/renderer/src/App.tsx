@@ -33,6 +33,10 @@ import {
   XCircle
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { basicSetup } from 'codemirror'
+import { EditorState } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import { goToNextChunk, goToPreviousChunk, MergeView } from '@codemirror/merge'
 import { DEFAULT_APPEARANCE, DEFAULT_DIFF_TOOL_ARGUMENTS, DEFAULT_MERGE_TOOL_ARGUMENTS } from '../../shared/types'
 import { filterError, filterQuery, makeFilterExpression, matchesFilter } from './filter'
 import type { FilterMode } from './filter'
@@ -50,6 +54,7 @@ import type {
   CommitDetails,
   CommitInfo,
   ContextMenuRequest,
+  DiffDocument,
   ExternalDiffRequest,
   FileChange,
   GitHealth,
@@ -87,7 +92,7 @@ interface PendingSelection {
 
 interface PendingDiffItem extends PendingSelection {
   key: string
-  content?: string
+  content?: DiffDocument
   error?: string
 }
 
@@ -338,7 +343,7 @@ export default function App(): React.JSX.Element {
   const [shelvesOpen, setShelvesOpen] = useState(false)
   const [branchComparison, setBranchComparison] = useState<BranchComparison>()
   const [commitDetailsView, setCommitDetailsView] = useState<CommitDetails>()
-  const [commitDetailsDiff, setCommitDetailsDiff] = useState<{ title: string; content: string }>()
+  const [commitDetailsDiff, setCommitDetailsDiff] = useState<{ title: string; content: DiffDocument }>()
   const [selectiveMergeEditor, setSelectiveMergeEditor] = useState<SelectiveMergeEditorState>()
   const [branchEditor, setBranchEditor] = useState<BranchEditorState>()
   const [operationState, setOperationState] = useState<OperationState>({ conflicts: 0, canContinue: false, canAbort: false })
@@ -378,7 +383,7 @@ export default function App(): React.JSX.Element {
   const [locationDraft, setLocationDraft] = useState('')
   const [locationMenuOpen, setLocationMenuOpen] = useState(false)
   const [bookmarkMenuOpen, setBookmarkMenuOpen] = useState(false)
-  const [diff, setDiff] = useState('')
+  const [diff, setDiff] = useState<DiffDocument | string>('')
   const [diffLoading, setDiffLoading] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [submitOpen, setSubmitOpen] = useState(false)
@@ -718,7 +723,7 @@ export default function App(): React.JSX.Element {
       if (launched) appendLog(`External Diff: ${request.leftTitle} ↔ ${request.rightTitle} — ${request.filePath}`, 'success')
       return launched
     } catch (reason) {
-      const message = `${friendlyError(reason)} Falling back to the built-in side-by-side Diff.`
+      const message = `${friendlyError(reason)} Falling back to the built-in CodeMirror MergeView.`
       setError(message)
       appendLog(message, 'error')
       return false
@@ -737,13 +742,7 @@ export default function App(): React.JSX.Element {
     setDiffLoading(true)
     setDiff('')
     try {
-      const content = await window.p4git.getDiff({
-        repoPath: repository.root,
-        filePath: change.path,
-        staged: stagedVersion,
-        untracked: change.kind === 'untracked'
-      })
-      setDiff(content || 'No textual differences to display.')
+      setDiff(await window.p4git.getDiffDocument(pendingExternalDiffRequest(repository.root, selection)))
     } catch (reason) {
       const message = friendlyError(reason)
       setDiff(message)
@@ -781,15 +780,10 @@ export default function App(): React.JSX.Element {
     appendLog(`Loading Diff for ${items.length} selected file(s).`)
     await Promise.all(items.map(async (item) => {
       try {
-        const content = await window.p4git.getDiff({
-          repoPath: repository.root,
-          filePath: item.change.path,
-          staged: item.staged,
-          untracked: item.change.kind === 'untracked'
-        })
+        const content = await window.p4git.getDiffDocument(pendingExternalDiffRequest(repository.root, item))
         setPendingDiffView((current) => current?.id === id ? {
           ...current,
-          items: current.items.map((candidate) => candidate.key === item.key ? { ...candidate, content: content || 'No textual differences to display.' } : candidate)
+          items: current.items.map((candidate) => candidate.key === item.key ? { ...candidate, content } : candidate)
         } : current)
       } catch (reason) {
         const message = friendlyError(reason)
@@ -809,13 +803,15 @@ export default function App(): React.JSX.Element {
     setDiffLoading(true)
     setDiff('')
     try {
-      const content = await window.p4git.getDiff({
+      const request: ExternalDiffRequest = {
         repoPath: repository.root,
         filePath,
-        staged: false,
-        baseRef
-      })
-      setDiff(content || 'The workspace file matches the selected revision.')
+        left: { kind: 'git', ref },
+        right: { kind: 'workspace' },
+        leftTitle: ref,
+        rightTitle: 'Workspace'
+      }
+      setDiff(await window.p4git.getDiffDocument(request))
     } catch (reason) {
       const message = friendlyError(reason)
       setDiff(message)
@@ -930,7 +926,7 @@ export default function App(): React.JSX.Element {
       const next = await window.p4git.savePreferences(preferenceDraft.diffPath || undefined, preferenceDraft.diffArguments, preferenceDraft.mergePath || undefined, preferenceDraft.mergeArguments, preferenceDraft.appearance)
       setSettings(next)
       setPreferencesOpen(false)
-      appendLog(next.diffToolPath ? `External Diff configured: ${next.diffToolPath}` : 'External Diff disabled; using the built-in side-by-side Diff.', 'success')
+      appendLog(next.diffToolPath ? `External Diff configured: ${next.diffToolPath}` : 'External Diff disabled; using the built-in CodeMirror MergeView.', 'success')
     } catch (reason) {
       setError(friendlyError(reason))
     } finally {
@@ -1099,8 +1095,14 @@ export default function App(): React.JSX.Element {
     setDiff('')
     try {
       appendLog(`git ${compareRef ? `diff ${commit.shortHash} ${compareRef}` : `show ${commit.shortHash}`} -- ${fileHistoryView.path}`)
-      const content = await window.p4git.getFileRevisionDiff(repository.root, fileHistoryView.path, commit.hash, compareRef)
-      setDiff(content || 'No textual differences to display for this revision.')
+      setDiff(await window.p4git.getDiffDocument({
+        repoPath: repository.root,
+        filePath: fileHistoryView.path,
+        left: compareRef ? { kind: 'git', ref: commit.hash } : { kind: 'parent', ref: commit.hash },
+        right: compareRef ? { kind: 'git', ref: compareRef } : { kind: 'git', ref: commit.hash },
+        leftTitle: compareRef ? commit.shortHash : `${commit.shortHash} previous`,
+        rightTitle: compareRef ?? commit.shortHash
+      }))
     } catch (reason) {
       const message = friendlyError(reason)
       setDiff(message)
@@ -1110,7 +1112,7 @@ export default function App(): React.JSX.Element {
     }
   }, [appendLog, fileHistoryView, launchConfiguredDiff, repository])
 
-  const diffCommitFileAgainstWorkspace = useCallback(async (commit: CommitInfo, file: RevisionFile): Promise<string | undefined> => {
+  const diffCommitFileAgainstWorkspace = useCallback(async (commit: CommitInfo, file: RevisionFile): Promise<DiffDocument | undefined> => {
     if (!repository) return undefined
     const ref = file.kind === 'D' ? `${commit.hash}^` : commit.hash
     const launched = await launchConfiguredDiff({
@@ -1122,11 +1124,17 @@ export default function App(): React.JSX.Element {
       rightTitle: 'Local workspace'
     })
     if (launched) return undefined
-    const content = await window.p4git.getDiff({ repoPath: repository.root, filePath: file.path, staged: false, baseRef: ref })
-    return content || 'No textual differences. The file may be binary or identical to the local workspace.'
+    return window.p4git.getDiffDocument({
+      repoPath: repository.root,
+      filePath: file.path,
+      left: { kind: 'git', ref },
+      right: { kind: 'workspace' },
+      leftTitle: file.kind === 'D' ? `${commit.shortHash} parent (before delete)` : commit.shortHash,
+      rightTitle: 'Local workspace'
+    })
   }, [launchConfiguredDiff, repository])
 
-  const diffCommitFileAgainstPrevious = useCallback(async (commit: CommitInfo, file: RevisionFile): Promise<string | undefined> => {
+  const diffCommitFileAgainstPrevious = useCallback(async (commit: CommitInfo, file: RevisionFile): Promise<DiffDocument | undefined> => {
     if (!repository) return undefined
     const launched = await launchConfiguredDiff({
       repoPath: repository.root,
@@ -1139,8 +1147,16 @@ export default function App(): React.JSX.Element {
       rightTitle: commit.shortHash
     })
     if (launched) return undefined
-    const content = await window.p4git.getFileRevisionDiff(repository.root, file.path, commit.hash)
-    return content || 'No textual differences. The file may be binary or unchanged from its previous revision.'
+    return window.p4git.getDiffDocument({
+      repoPath: repository.root,
+      filePath: file.path,
+      leftFilePath: file.oldPath ?? file.path,
+      rightFilePath: file.path,
+      left: { kind: 'parent', ref: commit.hash },
+      right: { kind: 'git', ref: commit.hash },
+      leftTitle: `${commit.shortHash} previous`,
+      rightTitle: commit.shortHash
+    })
   }, [launchConfiguredDiff, repository])
 
   const handleHistoryContext = useCallback(async (commit: CommitInfo) => {
@@ -1756,7 +1772,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.11.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.12.0\nA P4V-style desktop workflow for Git.\nBuilt-in CodeMirror MergeView Diff.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -2592,9 +2608,9 @@ function WorkspacesTable({ paths, active, filter, onOpen, onContext }: { paths: 
   return <div className="classic-table workspaces-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable"><button onClick={() => setSort('workspace')}>Workspace</button><button onClick={() => setSort('root')}>Root</button><button onClick={() => setSort('status')}>Status</button></div>{rows.map((path) => <button key={path} className={`table-row ${selection.selected.has(path) || (!selection.selected.size && path === active) ? 'selected' : ''}`} onClick={(event) => selection.click(path, event)} onDoubleClick={() => onOpen(path)} onContextMenu={(event) => { event.preventDefault(); selection.context(path); onContext(path) }}><span className="file-name" title={path}><Monitor size={15} />{parts(path).name}</span><span title={path}>{path}</span><span>{path === active ? 'Current' : 'Recent'}</span></button>)}</div>
 }
 
-function DetailContent({ tab, pending, changelists, commit, branch, entry, commitFiles, diff, diffLoading, issues, onOpenIssue }: { tab: DetailTab; pending?: PendingSelection; changelists: LocalChangelist[]; commit?: CommitInfo; branch?: BranchInfo; entry?: WorkspaceEntry; commitFiles: RevisionFile[]; diff: string; diffLoading: boolean; issues: GitLabOverview['issues']; onOpenIssue: (url: string) => void }): React.JSX.Element {
+function DetailContent({ tab, pending, changelists, commit, branch, entry, commitFiles, diff, diffLoading, issues, onOpenIssue }: { tab: DetailTab; pending?: PendingSelection; changelists: LocalChangelist[]; commit?: CommitInfo; branch?: BranchInfo; entry?: WorkspaceEntry; commitFiles: RevisionFile[]; diff: DiffDocument | string; diffLoading: boolean; issues: GitLabOverview['issues']; onOpenIssue: (url: string) => void }): React.JSX.Element {
   const pendingList = pending?.staged ? 'Ready to submit' : pending?.changelistId ? changelists.find((item) => item.id === pending.changelistId)?.name ?? 'Local changelist' : 'Default changelist'
-  if (tab === 'diff') return <SideBySideDiff content={diffLoading ? 'Loading diff...' : diff || 'Select a pending file and choose Diff.'} compact />
+  if (tab === 'diff') return <BuiltInDiff content={diffLoading ? 'Loading diff...' : diff || 'Select a pending file and choose Diff.'} compact />
   if (tab === 'jobs') return issues.length ? <div className="issue-list">{issues.map((issue) => <button key={issue.iid} onClick={() => onOpenIssue(issue.webUrl)}><strong>#{issue.iid}</strong><span>{issue.title}</span><em>{issue.state}</em></button>)}</div> : <div className="detail-empty">Configure Tools &gt; GitLab to use GitLab Issues as P4V Jobs.</div>
   if (tab === 'files') {
     if (pending) return <div className="detail-line"><File size={14} /><strong>{pending.change.path}</strong><span>{pendingList}</span></div>
@@ -2646,7 +2662,7 @@ function PreferencesDialog({ health, value, onChange, onChooseGit, onChooseDiff,
     <div className="modal-title"><Settings size={16} /><strong>Preferences</strong><button onClick={onCancel}><X size={16} /></button></div>
     <div className="preferences-body">
       <fieldset><legend>Git executable</legend><div className="preference-path"><input readOnly value={health.path ?? ''} placeholder="Git has not been configured" /><button onClick={onChooseGit}>Change...</button></div><p>{health.version ?? health.error ?? 'P4Git verifies Git before saving it.'}</p></fieldset>
-      <fieldset><legend>External Diff tool</legend><div className="preference-path"><input readOnly value={value.diffPath} placeholder="Not configured — use the built-in side-by-side Diff" /><button onClick={onChooseDiff}>Browse...</button><button onClick={() => onChange({ ...value, diffPath: '', diffArguments: DEFAULT_DIFF_TOOL_ARGUMENTS })} disabled={!value.diffPath}>Disable</button></div><label>Arguments template:</label><textarea value={value.diffArguments} onChange={(event) => onChange({ ...value, diffArguments: event.target.value })} disabled={!value.diffPath} /><p>Beyond Compare 5/4 is auto-detected on Windows. Placeholders: {'{left}'}, {'{right}'}, {'{leftTitle}'}, {'{rightTitle}'}.</p>{!validDiff && <p className="preference-error">The template must contain {'{left}'} and {'{right}'}.</p>}</fieldset>
+      <fieldset><legend>External Diff tool</legend><div className="preference-path"><input readOnly value={value.diffPath} placeholder="Not configured — use the built-in CodeMirror MergeView" /><button onClick={onChooseDiff}>Browse...</button><button onClick={() => onChange({ ...value, diffPath: '', diffArguments: DEFAULT_DIFF_TOOL_ARGUMENTS })} disabled={!value.diffPath}>Disable</button></div><label>Arguments template:</label><textarea value={value.diffArguments} onChange={(event) => onChange({ ...value, diffArguments: event.target.value })} disabled={!value.diffPath} /><p>Beyond Compare 5/4 is auto-detected on Windows. CodeMirror MergeView is bundled offline as the default fallback. Placeholders: {'{left}'}, {'{right}'}, {'{leftTitle}'}, {'{rightTitle}'}.</p>{!validDiff && <p className="preference-error">The template must contain {'{left}'} and {'{right}'}.</p>}</fieldset>
       <fieldset><legend>External 3-way Merge tool</legend><div className="preference-path"><input readOnly value={value.mergePath} placeholder="Not configured — use the built-in Resolve editor" /><button onClick={onChooseMerge}>Browse...</button><button onClick={() => onChange({ ...value, mergePath: '', mergeArguments: DEFAULT_MERGE_TOOL_ARGUMENTS })} disabled={!value.mergePath}>Disable</button></div><label>Arguments template:</label><textarea value={value.mergeArguments} onChange={(event) => onChange({ ...value, mergeArguments: event.target.value })} disabled={!value.mergePath} /><p>Required placeholders: {'{base}'}, {'{ours}'}, {'{theirs}'}, {'{result}'}. The tool must exit after saving the result.</p>{!validMerge && <p className="preference-error">All four Merge placeholders are required.</p>}</fieldset>
       <fieldset><legend>Appearance and layout</legend><div className="appearance-grid"><label>Theme<select value={value.appearance.theme} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, theme: event.target.value as AppearanceSettings['theme'] } })}><option value="classic">P4V Classic</option><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Density<select value={value.appearance.density} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, density: event.target.value as AppearanceSettings['density'] } })}><option value="compact">Compact</option><option value="comfortable">Comfortable</option></select></label><label>Text size<input type="range" min="0.85" max="1.35" step="0.05" value={value.appearance.fontScale} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, fontScale: Number(event.target.value) } })} /><span>{Math.round(value.appearance.fontScale * 100)}%</span></label><label className="check-filter"><input type="checkbox" checked={value.appearance.showToolbarLabels} onChange={(event) => onChange({ ...value, appearance: { ...value.appearance, showToolbarLabels: event.target.checked } })} />Show toolbar labels</label></div><button onClick={() => onChange({ ...value, appearance: DEFAULT_APPEARANCE })}>Reset layout and columns</button><p>Drag the vertical workspace divider, detail divider, log divider, and table column edges. Saved sizes are restored on next launch.</p></fieldset>
     </div>
@@ -2764,12 +2780,12 @@ function ShelvesDialog({ repoPath, shelves, onClose, onUnshelved }: { repoPath: 
   return <div className="modal-backdrop"><section className="git-list-dialog"><div className="modal-title"><FileText size={16} /><strong>Local Shelves</strong><button onClick={onClose}><X size={16} /></button></div><div className="shelves-list">{shelves.map((shelf) => <div key={shelf.hash}><strong>{shelf.name}</strong><span>{shelf.description || `${shelf.paths.length} files`}</span><time>{formatDate(shelf.createdAt)}</time><button disabled={busy} onClick={async () => { if (!window.confirm(`Unshelve ${shelf.name} into the current workspace?`)) return; setBusy(true); try { await onUnshelved(await window.p4git.unshelve(repoPath, shelf.hash)) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}>Unshelve</button></div>)}{!shelves.length && <EmptyTable text="No local shelves. Right-click a changelist to Shelve it." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
 }
 
-function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff, onDiffPrevious }: { repoPath: string; value: BranchComparison; onClose: () => void; onMerge: (commits: CommitInfo[]) => Promise<boolean>; onDiff: (commit: CommitInfo, file: RevisionFile) => Promise<string | undefined>; onDiffPrevious: (commit: CommitInfo, file: RevisionFile) => Promise<string | undefined> }): React.JSX.Element {
+function BranchComparisonDialog({ repoPath, value, onClose, onMerge, onDiff, onDiffPrevious }: { repoPath: string; value: BranchComparison; onClose: () => void; onMerge: (commits: CommitInfo[]) => Promise<boolean>; onDiff: (commit: CommitInfo, file: RevisionFile) => Promise<DiffDocument | undefined>; onDiffPrevious: (commit: CommitInfo, file: RevisionFile) => Promise<DiffDocument | undefined> }): React.JSX.Element {
   const selection = useTableSelection(value.incoming.map((commit) => commit.hash))
   const [busy, setBusy] = useState(false)
   const [details, setDetails] = useState<CommitDetails>()
   const [detailLoading, setDetailLoading] = useState(false)
-  const [diffView, setDiffView] = useState<{ title: string; content: string }>()
+  const [diffView, setDiffView] = useState<{ title: string; content: DiffDocument | string }>()
   const [error, setError] = useState('')
   const selected = value.incoming.filter((commit) => selection.selected.has(commit.hash))
   const openDetails = async (commit: CommitInfo): Promise<void> => {
@@ -2809,8 +2825,72 @@ function CommitDetailsDialog({ value, title = 'Commit Details', onClose, onFileC
   return <div className="modal-backdrop nested-modal"><section className="commit-details-dialog"><div className="modal-title"><GitCommit size={16} /><strong>{title} — {value.shortHash}</strong><button onClick={onClose}><X size={16} /></button></div><div className="commit-details-summary"><strong>Change</strong><code>{value.shortHash}</code><strong>Commit</strong><code>{value.hash}</code><strong>Submitted by</strong><span>{value.author} &lt;{value.email}&gt;</span><strong>Date</strong><span>{formatDate(value.date)}</span><strong>Parents</strong><span>{value.parents.join(', ') || 'Root commit'}</span></div><pre className="commit-message">{value.message}</pre><div className="commit-files"><div className="commit-file-head"><span>Action</span><span>File</span><span>Previous path</span></div>{value.files.map((file) => <button key={`${file.kind}-${file.oldPath ?? ''}-${file.path}`} onContextMenu={(event) => { event.preventDefault(); onFileContext(file) }}><span className="commit-file-status"><i className={`change-mark ${file.kind === 'A' ? 'added' : file.kind === 'D' ? 'deleted' : 'modified'}`}>{file.kind}</i>{revisionFileLabel(file.kind)}</span><span title={file.path}>{file.path}</span><span title={file.oldPath}>{file.oldPath ?? ''}</span></button>)}{!value.files.length && <EmptyTable text="This commit has no changed files." />}</div><div className="modal-actions"><span>Right-click a file to Diff against its previous revision or local Workspace, or copy its path.</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
 }
 
-function TextDiffDialog({ title, content, onClose }: { title: string; content: string; onClose: () => void }): React.JSX.Element {
-  return <div className="modal-backdrop nested-modal"><section className="text-diff-dialog"><div className="modal-title"><FileDiff size={16} /><strong>{title}</strong><button onClick={onClose}><X size={16} /></button></div><SideBySideDiff content={content} /><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+function TextDiffDialog({ title, content, onClose }: { title: string; content: DiffDocument | string; onClose: () => void }): React.JSX.Element {
+  return <div className="modal-backdrop nested-modal"><section className="text-diff-dialog"><div className="modal-title"><FileDiff size={16} /><strong>{title}</strong><button onClick={onClose}><X size={16} /></button></div><BuiltInDiff content={content} /><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+}
+
+function BuiltInDiff({ content, compact = false }: { content: DiffDocument | string; compact?: boolean }): React.JSX.Element {
+  return typeof content === 'string'
+    ? <SideBySideDiff content={content} compact={compact} />
+    : <CodeMirrorMergeDiff document={content} compact={compact} />
+}
+
+function CodeMirrorMergeDiff({ document: value, compact = false }: { document: DiffDocument; compact?: boolean }): React.JSX.Element {
+  const host = useRef<HTMLDivElement>(null)
+  const merge = useRef<MergeView | null>(null)
+  const [collapsed, setCollapsed] = useState(true)
+  const [wrapped, setWrapped] = useState(false)
+  const [chunkCount, setChunkCount] = useState(0)
+  const dark = Boolean(document.querySelector('.p4v-shell.theme-dark'))
+  useEffect(() => {
+    if (!host.current || value.message) return
+    const extensions = [
+      basicSetup,
+      EditorState.readOnly.of(true),
+      EditorView.editable.of(false),
+      EditorView.darkTheme.of(dark),
+      ...(wrapped ? [EditorView.lineWrapping] : []),
+      EditorView.theme({
+        '&': { height: '100%', fontSize: '12px' },
+        '.cm-scroller': { overflow: 'auto', fontFamily: 'Consolas, "Cascadia Mono", monospace' },
+        '.cm-gutters': { backgroundColor: dark ? '#293136' : '#eef1f2', color: dark ? '#aab4b9' : '#68767d', borderRight: `1px solid ${dark ? '#4b555a' : '#c5cbce'}` },
+        '.cm-content': { caretColor: 'transparent' },
+        '&.cm-focused': { outline: 'none' }
+      }, { dark })
+    ]
+    const view = new MergeView({
+      a: { doc: value.left, extensions },
+      b: { doc: value.right, extensions },
+      parent: host.current,
+      orientation: 'a-b',
+      highlightChanges: true,
+      gutter: true,
+      collapseUnchanged: collapsed ? { margin: 3, minSize: 5 } : undefined,
+      diffConfig: { scanLimit: 10_000, timeout: 2_000 }
+    })
+    merge.current = view
+    setChunkCount(view.chunks.length)
+    return () => {
+      merge.current = null
+      view.destroy()
+    }
+  }, [collapsed, dark, value.left, value.message, value.right, wrapped])
+  const jump = (next: boolean): void => {
+    const view = merge.current
+    if (view) (next ? goToNextChunk : goToPreviousChunk)(view.b)
+  }
+  return <div className={`codemirror-diff ${compact ? 'compact' : ''}`}>
+    <div className="codemirror-diff-toolbar">
+      <button onClick={() => jump(false)} disabled={!chunkCount}>↑ Previous Difference</button>
+      <button onClick={() => jump(true)} disabled={!chunkCount}>↓ Next Difference</button>
+      <span>{chunkCount ? `${chunkCount} changed block(s)` : 'Files are identical'}</span>
+      <label><input type="checkbox" checked={collapsed} onChange={(event) => setCollapsed(event.target.checked)} />Collapse unchanged sections</label>
+      <label><input type="checkbox" checked={wrapped} onChange={(event) => setWrapped(event.target.checked)} />Wrap long lines</label>
+      <em>CodeMirror MergeView · Ctrl+F to search</em>
+    </div>
+    <div className="codemirror-diff-head"><strong title={value.leftTitle}>{value.leftTitle}</strong><strong title={value.rightTitle}>{value.rightTitle}</strong></div>
+    {value.message ? <div className="codemirror-diff-message"><AlertTriangle size={20} /><span>{value.message}</span></div> : <div className="codemirror-merge-host" ref={host} />}
+  </div>
 }
 
 function DiffText({ cell, other }: { cell: DiffCell; other: DiffCell }): React.JSX.Element {
@@ -2849,7 +2929,7 @@ function PendingDiffDialog({ value, onChange, onClose }: { value: PendingDiffVie
     const item = value.items[Math.max(0, Math.min(value.items.length - 1, index))]
     if (item) onChange({ ...value, activeKey: item.key })
   }
-  return <div className="modal-backdrop"><section className="pending-diff-dialog" role="dialog" aria-modal="true"><div className="modal-title"><FileDiff size={16} /><strong>Diff Selected Files ({value.items.length})</strong><span>{loaded}/{value.items.length} loaded</span><button onClick={onClose}><X size={16} /></button></div><div className="pending-diff-body"><aside><div className="pending-diff-head">Files</div>{value.items.map((item) => <button key={item.key} className={item.key === active?.key ? 'active' : ''} onClick={() => onChange({ ...value, activeKey: item.key })} title={item.change.path}><i className={`change-mark ${item.change.kind}`}>{changeCode(item.change)}</i><span>{item.change.path}</span><em>{item.staged ? 'HEAD ↔ Git index' : item.change.kind === 'untracked' ? 'Empty ↔ Workspace' : item.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</em>{item.error ? <AlertTriangle size={13} /> : item.content === undefined ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</button>)}</aside><section><header><strong title={active?.change.path}>{active?.change.path}</strong><span>{active?.staged ? 'HEAD ↔ Git index' : active?.change.kind === 'untracked' ? 'Empty ↔ Workspace' : active?.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</span></header><SideBySideDiff content={active?.error ?? active?.content ?? 'Loading diff...'} /></section></div><div className="modal-actions"><button onClick={() => selectIndex(activeIndex - 1)} disabled={activeIndex <= 0}>Previous File</button><button onClick={() => selectIndex(activeIndex + 1)} disabled={activeIndex >= value.items.length - 1}>Next File</button><span>{activeIndex + 1} of {value.items.length}</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
+  return <div className="modal-backdrop"><section className="pending-diff-dialog" role="dialog" aria-modal="true"><div className="modal-title"><FileDiff size={16} /><strong>Diff Selected Files ({value.items.length})</strong><span>{loaded}/{value.items.length} loaded</span><button onClick={onClose}><X size={16} /></button></div><div className="pending-diff-body"><aside><div className="pending-diff-head">Files</div>{value.items.map((item) => <button key={item.key} className={item.key === active?.key ? 'active' : ''} onClick={() => onChange({ ...value, activeKey: item.key })} title={item.change.path}><i className={`change-mark ${item.change.kind}`}>{changeCode(item.change)}</i><span>{item.change.path}</span><em>{item.staged ? 'HEAD ↔ Git index' : item.change.kind === 'untracked' ? 'Empty ↔ Workspace' : item.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</em>{item.error ? <AlertTriangle size={13} /> : item.content === undefined ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</button>)}</aside><section><header><strong title={active?.change.path}>{active?.change.path}</strong><span>{active?.staged ? 'HEAD ↔ Git index' : active?.change.kind === 'untracked' ? 'Empty ↔ Workspace' : active?.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</span></header><BuiltInDiff content={active?.error ?? active?.content ?? 'Loading diff...'} /></section></div><div className="modal-actions"><button onClick={() => selectIndex(activeIndex - 1)} disabled={activeIndex <= 0}>Previous File</button><button onClick={() => selectIndex(activeIndex + 1)} disabled={activeIndex >= value.items.length - 1}>Next File</button><span>{activeIndex + 1} of {value.items.length}</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function SelectiveMergeDialog({ value, onChange, onClose, onMerge, busy, currentBranch }: { value: SelectiveMergeEditorState; onChange: (value: SelectiveMergeEditorState) => void; onClose: () => void; onMerge: () => void; busy: boolean; currentBranch: string }): React.JSX.Element {

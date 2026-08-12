@@ -21,7 +21,7 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | Shelve | 把一个 Changelist 保存为本地 Git stash，并在 Unshelve 时恢复文件归组 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
 | History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
-| Diff | Beyond Compare 风格内置双栏视图，支持行对齐、字符高亮和差异跳转；Windows 自动发现 Beyond Compare 5，也可配置其他外部工具 |
+| Diff | 内置 MIT 开源 CodeMirror MergeView：完整文件双栏对齐、字符高亮、搜索、折叠及差异跳转；仍支持自动发现 Beyond Compare 5 |
 | 提交 | P4V 严格送达：Fetch、commit、必要时 Rebase/Resolve、Push，并验证服务器引用后才报告成功 |
 | Submitted | 按路径联动浏览提交；详情文件可与上一版本或本地 Workspace 比较 |
 | Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；分支栏可拖动调宽，并支持按名称模糊筛选 |

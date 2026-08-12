@@ -42,7 +42,7 @@ Read the error shown by P4Git, correct the files or message, and commit again. P
 ## A Diff Is Empty or Truncated
 
 - Binary files may not have a text diff.
-- Untracked files larger than 2 MB are not previewed.
+- The built-in CodeMirror text Diff is limited to 8 MB per side; configure an external Diff tool for larger files.
 - P4Git displays at most 6,000 lines.
 - A file with both staged and unstaged content has two distinct diffs; select it in the intended changelist.
 

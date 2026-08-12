@@ -507,6 +507,16 @@ export interface ExternalDiffRequest {
   rightTitle: string
 }
 
+export interface DiffDocument {
+  filePath: string
+  leftTitle: string
+  rightTitle: string
+  left: string
+  right: string
+  binary: boolean
+  message?: string
+}
+
 export interface GitHealth {
   available: boolean
   path?: string
@@ -559,6 +569,7 @@ export interface P4GitApi {
   listTree(repoPath: string, ref: string, relativePath?: string): Promise<WorkspaceEntry[]>
   getFileHistory(repoPath: string, filePath: string, limit?: number, ref?: string): Promise<CommitInfo[]>
   getFileRevisionDiff(repoPath: string, filePath: string, ref: string, compareRef?: string): Promise<string>
+  getDiffDocument(request: ExternalDiffRequest): Promise<DiffDocument>
   launchExternalDiff(request: ExternalDiffRequest): Promise<boolean>
   getBlame(repoPath: string, filePath: string, ref?: string): Promise<BlameLine[]>
   getCommitFiles(repoPath: string, hash: string): Promise<RevisionFile[]>

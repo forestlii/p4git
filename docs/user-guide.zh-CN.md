@@ -74,7 +74,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ## Diff 与 Revert
 
-双击 Pending 文件，或选中后点击 **Diff**，对应的已暂存或未暂存差异会在双栏视图中显示，支持行号、行对齐、字符级高亮、同步滚动以及上一个/下一个差异跳转。未跟踪文本文件按全新内容显示；二进制文件和大于 2 MB 的未跟踪文件不提供预览。
+双击 Pending 文件，或选中后点击 **Diff**，P4Git 会使用随安装包离线内置的 MIT 开源 CodeMirror MergeView 显示完整左右文件。它支持行号、双栏对齐、字符级高亮、同步滚动、折叠未修改区、长行换行、`Ctrl+F` 搜索以及上一个/下一个差异跳转。内置文本比较每侧上限为 8 MB；二进制和超限文件会明确提示并可改用外部工具。
 
 **Revert** 会在确认后同时恢复所选已跟踪文件的索引和工作区内容。对于选中的新增或未跟踪文件，P4Git 会另行列出文件清单并警告永久删除；混合多选时只删除清单中的新文件，其余已跟踪文件恢复到 `HEAD`。这些操作都无法由 P4Git 撤销。
 
@@ -88,7 +88,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 模板必须包含 `{left}` 和 `{right}`；可选的 `{leftTitle}`、`{rightTitle}` 用于显示易读的左右标题。参数会以数组直接传给可执行程序，不经过命令行 shell。
 
-Windows 首次使用时会自动发现 `C:\Program Files\Beyond Compare 5\BCompare.exe`（也兼容 Beyond Compare 4）。配置外部工具后，HEAD/Workspace、index/Workspace、HEAD/index、Depot ref/Workspace 和 History Previous/HEAD 会优先使用它。P4Git 会生成保留二进制内容的临时只读副本，并清理超过 24 小时的旧副本。工具被禁用、丢失或启动失败时，使用新的 Beyond Compare 风格内置双栏视图。
+Windows 首次使用时会自动发现 `C:\Program Files\Beyond Compare 5\BCompare.exe`（也兼容 Beyond Compare 4）。配置外部工具后，HEAD/Workspace、index/Workspace、HEAD/index、Depot ref/Workspace 和 History Previous/HEAD 会优先使用它。P4Git 会生成保留二进制内容的临时只读副本，并清理超过 24 小时的旧副本。工具被禁用、丢失或启动失败时，回退到离线内置的 CodeMirror MergeView。
 
 ## Workspace 选择与多窗口
 

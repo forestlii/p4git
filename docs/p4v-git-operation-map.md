@@ -21,8 +21,8 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Add | `git add` an untracked file | Implemented |
 | Delete | `git rm`, or record a deletion already made on disk | Implemented |
 | Revert | Restore tracked files from `HEAD`; explicitly confirmed added/untracked selections are deleted from disk | Implemented, confirmed |
-| Diff | Working tree, index, Depot ref, and commit diffs in an aligned Beyond Compare-style side-by-side viewer | Implemented |
-| External Diff tool | Auto-discovered Beyond Compare 5/4 or a user-configured executable, with the built-in side-by-side fallback | Implemented for file diffs |
+| Diff | Full working-tree, index, Depot-ref, and commit-file comparisons in the bundled MIT-licensed CodeMirror MergeView | Implemented |
+| External Diff tool | Auto-discovered Beyond Compare 5/4 or a user-configured executable, with CodeMirror as the built-in fallback | Implemented for file diffs |
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
 | Revision Graph / Stream Graph | Multi-lane topology from commit parents, fuzzy ref filtering, a resizable branch pane, and Work in this Stream for local or remote branches | Implemented |
 | Select changes from another branch | Inspect commits/files, filter equivalent patches, then apply selected changes without committing into a new local Changelist; Resolve and Continue preserve the queue | Implemented; merge commits require a separate mainline workflow |

@@ -21,7 +21,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Shelve | Store a changelist as a local Git stash and restore its file assignments on Unshelve |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
-| Diff | Beyond Compare-style built-in side-by-side view with aligned lines, character highlights, navigation, and optional external tools; Beyond Compare 5 is auto-detected on Windows |
+| Diff | Bundled MIT-licensed CodeMirror MergeView with full-file alignment, character highlights, search, folding, and difference navigation; Beyond Compare 5 remains supported |
 | Submit | P4V-strict delivery: Fetch, commit, Rebase/Resolve when needed, Push, and verify the exact server ref before reporting success |
 | Submitted | Browse path-linked commits; detail files compare against their previous revision or local Workspace |
 | Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |

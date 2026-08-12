@@ -40,6 +40,7 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:file-history', repoPath, filePath, limit, ref),
   getFileRevisionDiff: (repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     ipcRenderer.invoke('git:file-revision-diff', repoPath, filePath, ref, compareRef),
+  getDiffDocument: (request: ExternalDiffRequest) => ipcRenderer.invoke('git:diff-document', request),
   launchExternalDiff: (request: ExternalDiffRequest) => ipcRenderer.invoke('git:external-diff', request),
   getBlame: (repoPath: string, filePath: string, ref?: string) =>
     ipcRenderer.invoke('git:blame', repoPath, filePath, ref),

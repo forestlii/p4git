@@ -74,7 +74,7 @@ Moving a file to **Ready to submit** stages it. Moving a staged file to Default 
 
 ## Diff and Revert
 
-Double-click a pending file or select it and choose **Diff**. The matching staged or unstaged diff appears in an aligned side-by-side viewer with line numbers, character-level highlights, synchronized scrolling, and Previous/Next Difference navigation. Untracked text files appear as all-new content; binary files and untracked files over 2 MB are not previewed.
+Double-click a pending file or select it and choose **Diff** to open the full left and right files in the MIT-licensed CodeMirror MergeView bundled offline with P4Git. It provides line numbers, side-by-side alignment, character-level highlights, synchronized scrolling, unchanged-section folding, long-line wrapping, `Ctrl+F` search, and Previous/Next Difference navigation. Built-in text comparison is limited to 8 MB per side; binary or oversized files show an explicit message and can use an external tool.
 
 After confirmation, **Revert** restores both the index and working-tree content of tracked files. Selected added or untracked files are listed in a separate warning because Revert permanently deletes them from disk. A mixed multi-selection restores tracked files and deletes only the explicitly listed new files. P4Git cannot undo either operation.
 
@@ -88,7 +88,7 @@ Open **Tools > Preferences...** to configure Beyond Compare or another compariso
 
 The template must contain `{left}` and `{right}`; optional `{leftTitle}` and `{rightTitle}` placeholders provide readable pane names. Arguments are passed directly to the executable without a command shell.
 
-On Windows, P4Git automatically discovers `C:\Program Files\Beyond Compare 5\BCompare.exe` (and Beyond Compare 4) on first use. A configured external tool is preferred for HEAD/Workspace, index/Workspace, HEAD/index, Depot-ref/Workspace, and History Previous/HEAD comparisons. P4Git creates temporary read-only copies, preserves binary data, and removes stale copies after 24 hours. If the tool is disabled, missing, or cannot launch, the built-in Beyond Compare-style side-by-side viewer is used.
+On Windows, P4Git automatically discovers `C:\Program Files\Beyond Compare 5\BCompare.exe` (and Beyond Compare 4) on first use. A configured external tool is preferred for HEAD/Workspace, index/Workspace, HEAD/index, Depot-ref/Workspace, and History Previous/HEAD comparisons. P4Git creates temporary read-only copies, preserves binary data, and removes stale copies after 24 hours. If the tool is disabled, missing, or cannot launch, the offline bundled CodeMirror MergeView is used.
 
 ## Workspace selection and multiple windows
 

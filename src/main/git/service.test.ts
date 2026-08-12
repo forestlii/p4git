@@ -85,6 +85,22 @@ describe('GitService Git-native operations', () => {
       leftTitle: 'HEAD',
       rightTitle: 'Workspace'
     })).resolves.toBe(true)
+
+    await expect(subject.diffDocument({
+      repoPath: root,
+      filePath: 'tracked.txt',
+      left: { kind: 'git', ref: fileHistory[1].hash },
+      right: { kind: 'workspace' },
+      leftTitle: 'Initial',
+      rightTitle: 'Workspace'
+    })).resolves.toMatchObject({
+      filePath: 'tracked.txt',
+      leftTitle: 'Initial',
+      rightTitle: 'Workspace',
+      left: 'initial\n',
+      right: 'second revision\n',
+      binary: false
+    })
   }, 15_000)
 
   it('returns a unified patch for an untracked text file', async () => {
@@ -102,6 +118,16 @@ describe('GitService Git-native operations', () => {
     expect(patch).toContain('+++ b/untracked.txt')
     expect(patch).toContain('@@ -0,0 +1,2 @@')
     expect(patch).toContain('+first\n+second')
+
+    await writeFile(join(root, 'binary.dat'), Buffer.from([0, 1, 2, 3]))
+    await expect(subject.diffDocument({
+      repoPath: root,
+      filePath: 'binary.dat',
+      left: { kind: 'empty' },
+      right: { kind: 'workspace' },
+      leftTitle: 'Empty',
+      rightTitle: 'Workspace'
+    })).resolves.toMatchObject({ binary: true, left: '', right: '', message: expect.stringContaining('Binary') })
   })
 
   it('creates, lists, applies, and drops a stash, then reads reflog and tags', async () => {

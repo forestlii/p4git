@@ -1,6 +1,6 @@
 {
   "name": "p4git",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A P4V-inspired desktop client for Git teams.",
   "main": "./out/main/index.js",
   "author": "P4Git contributors",
@@ -16,6 +16,8 @@
     "dist:win": "npm run build && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
+    "@codemirror/merge": "^6.12.2",
+    "codemirror": "^6.0.2",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -42,7 +44,8 @@
     "files": [
       "out/**/*",
       "package.json",
-      "LICENSE"
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md"
     ],
     "win": {
       "target": [
