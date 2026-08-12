@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.3-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.3.0-0c8b87)
 
 ## 核心能力
 
@@ -18,13 +18,18 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | Depot | 浏览所选 upstream、HEAD、本地或远程分支的已提交文件树 |
 | 工作区 | 以可展开的 Workspace 树浏览已有 Git 仓库，并快速返回最近使用的工作区 |
 | 变更列表 | 创建可持久保存的本地命名 Changelist，多选并通过拖拽或右键批量归组文件，并一次只提交一个列表 |
+| Shelve | 把一个 Changelist 保存为本地 Git stash，并在 Unshelve 时恢复文件归组 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
 | History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
 | 外部 Diff | 配置 Beyond Compare 或其他可执行程序；文件比较会自动优先使用，并保留内置回退 |
 | 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
 | Submitted | 在 P4V 风格的已提交变更表格中浏览 Git 历史 |
-| Stream Graph | 查看本地和远程 Git 分支，新建分支或切换本地分支 |
-| 同步 | Fetch、仅快进 Pull，以及自动设置 upstream 的 Push |
+| Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；查看、新建和操作本地/远程分支 |
+| Resolve | 三栏查看 Base/Ours/Theirs，选择一方或编辑合并结果，并继续 Merge/Rebase/Cherry-pick |
+| GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
+| 导航 | 可编辑位置栏、历史、书签、Workspace 下拉、树排序/过滤和可排序表头 |
+| 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
+| Push / Remote | 管理 Remote，选择远端与目标分支，并在 Push 前预览提交 |
 | Git 发现 | 自动查找 Git for Windows，也可选择 UGit 等客户端自带的 `git.exe` |
 
 ## 下载
@@ -42,7 +47,7 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 
 1. 安装 P4Git，或者直接运行便携版。
 2. 确认 P4Git 找到了 Git；如果没有，请选择 Git for Windows 或 UGit 使用的 `git.exe`。
-3. 点击 **打开 Git 工作区**，选择已有本地仓库。
+3. 打开已有 Git 工作区，或使用 **File > Clone Repository / Init Repository**。
 4. 打开 **Pending**；按任务创建命名 Changelist，通过拖拽或文件右键菜单整理改动。
 5. 右键目标列表选择 **Submit Changelist**，或把文件移到 **Ready to submit** 后点击 **Submit**。
 6. 使用 **Get Latest** 和 **Connection** 菜单执行 Pull、Fetch 或 Push。
@@ -60,15 +65,15 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 
 - Windows 10 或更高版本，x64
 - Git 2.23 或更高版本
-- 0.1 版本需要选择一个已经存在的本地 Git 仓库
 - Fetch、Pull、Push 需要 Git 已经配置好对应服务端凭据
+- GitLab 面板需要自建 GitLab/GitLab.com 地址；私有项目通常需要 `api` scope 的 Personal Access Token
 
 ## 安全设计
 
 - React 页面没有 Node.js 权限，只能通过类型化 IPC 白名单访问 Electron。
 - Git 命令通过 `execFile` 参数数组执行，不经过命令行 shell。
 - 文件操作会校验路径必须位于当前仓库内部。
-- Pull 固定使用 `--ff-only`，避免客户端在用户不知情时制造合并提交。
+- Get Latest 先 Fetch；可安全快进时自动更新，历史分叉时先询问 Merge 或 Rebase，不会擅自改写历史。
 - 丢弃已跟踪文件改动前必须确认；P4Git 不会删除未跟踪文件。
 
 ## 本地开发
@@ -89,7 +94,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.1.3** 是以 Windows 为首要平台的版本。仓库克隆、凭据交互、可视化冲突解决、按区块暂存、Git LFS 锁和 GitLab Merge Request 集成仍在规划中。Stash、Reflog、Merge、Rebase、Cherry-pick、Reset 与 Tag 已集中到 **Tools > Git** 和对象右键 **Git** 子菜单。
+版本 **0.3.0** 补齐日常主流程：冲突自动进入 Resolve、Changelist Shelve/Unshelve、Remote 管理、Push 预览、分支 Incoming/Outgoing 与重命名，以及 Amend。按区块暂存、Git LFS 锁和 GitHub Pull Request 集成仍在规划中。
 
 ## 协议
 

@@ -1,10 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, CheckoutRequest, ContextMenuRequest, DiffRequest, ExternalDiffRequest, MenuAction, P4GitApi, ResetMode } from '../shared/types'
+import type { AbortOperation, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
   chooseGitExecutable: () => ipcRenderer.invoke('dialog:choose-git'),
   chooseDiffExecutable: () => ipcRenderer.invoke('dialog:choose-diff-tool'),
+  chooseDivergenceStrategy: (result: PullResult) => ipcRenderer.invoke('dialog:choose-divergence-strategy', result),
+  chooseCloneParent: () => ipcRenderer.invoke('dialog:choose-clone-parent'),
+  chooseInitDirectory: () => ipcRenderer.invoke('dialog:choose-init-directory'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveDiffSettings: (executable?: string, argumentsTemplate?: string) =>
     ipcRenderer.invoke('settings:save-diff-tool', executable, argumentsTemplate),
@@ -17,8 +20,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:unstage', repoPath, paths),
   discard: (repoPath: string, paths: string[]) =>
     ipcRenderer.invoke('git:discard', repoPath, paths),
-  commit: (repoPath: string, message: string) =>
-    ipcRenderer.invoke('git:commit', repoPath, message),
+  commit: (repoPath: string, message: string, amend?: boolean) =>
+    ipcRenderer.invoke('git:commit', repoPath, message, amend),
   getHistory: (repoPath: string, limit?: number) =>
     ipcRenderer.invoke('git:history', repoPath, limit),
   getBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),
@@ -37,6 +40,12 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:commit-files', repoPath, hash),
   getCommitDiff: (repoPath: string, hash: string) =>
     ipcRenderer.invoke('git:commit-diff', repoPath, hash),
+  getGraph: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:graph', repoPath, limit),
+  getConflicts: (repoPath: string) => ipcRenderer.invoke('git:conflicts', repoPath),
+  resolveConflict: (repoPath: string, filePath: string, resolution: ConflictResolution, content?: string) =>
+    ipcRenderer.invoke('git:resolve-conflict', repoPath, filePath, resolution, content),
+  continueOperation: (repoPath: string) => ipcRenderer.invoke('git:continue-operation', repoPath),
+  revertCommits: (repoPath: string, refs: string[]) => ipcRenderer.invoke('git:revert-commits', repoPath, refs),
   markDelete: (repoPath: string, paths: string[]) =>
     ipcRenderer.invoke('git:mark-delete', repoPath, paths),
   revert: (repoPath: string, paths: string[]) =>
@@ -54,6 +63,9 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:changelist-assign', repoPath, paths, id),
   prepareChangelist: (repoPath: string, paths: string[]) =>
     ipcRenderer.invoke('git:changelist-prepare', repoPath, paths),
+  shelveChangelist: (repoPath: string, id: string | undefined, name: string, description: string, paths: string[]) =>
+    ipcRenderer.invoke('git:changelist-shelve', repoPath, id, name, description, paths),
+  unshelve: (repoPath: string, hash: string) => ipcRenderer.invoke('git:changelist-unshelve', repoPath, hash),
   getStashes: (repoPath: string) => ipcRenderer.invoke('git:stashes', repoPath),
   stash: (repoPath: string, message: string, paths?: string[]) =>
     ipcRenderer.invoke('git:stash', repoPath, message, paths),
@@ -73,12 +85,32 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:reset', repoPath, ref, mode),
   deleteBranch: (repoPath: string, branch: string) =>
     ipcRenderer.invoke('git:delete-branch', repoPath, branch),
+  renameBranch: (repoPath: string, oldName: string, newName: string) => ipcRenderer.invoke('git:rename-branch', repoPath, oldName, newName),
+  compareBranch: (repoPath: string, branch: string) => ipcRenderer.invoke('git:compare-branch', repoPath, branch),
   abort: (repoPath: string, operation: AbortOperation) =>
     ipcRenderer.invoke('git:abort', repoPath, operation),
   checkout: (request: CheckoutRequest) => ipcRenderer.invoke('git:checkout', request),
   fetch: (repoPath: string) => ipcRenderer.invoke('git:fetch', repoPath),
   pull: (repoPath: string) => ipcRenderer.invoke('git:pull', repoPath),
   push: (repoPath: string) => ipcRenderer.invoke('git:push', repoPath),
+  getRemotes: (repoPath: string) => ipcRenderer.invoke('git:remotes', repoPath),
+  saveRemote: (repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string) => ipcRenderer.invoke('git:remote-save', repoPath, previousName, name, fetchUrl, pushUrl),
+  deleteRemote: (repoPath: string, name: string) => ipcRenderer.invoke('git:remote-delete', repoPath, name),
+  getPushPreview: (request: PushRequest) => ipcRenderer.invoke('git:push-preview', request),
+  pushTo: (request: PushRequest) => ipcRenderer.invoke('git:push-to', request),
+  getOperationState: (repoPath: string) => ipcRenderer.invoke('git:operation-state', repoPath),
+  cancelOperations: () => ipcRenderer.invoke('git:cancel'),
+  cloneRepository: (request: CloneRequest) => ipcRenderer.invoke('git:clone', request),
+  initRepository: (request: InitRequest) => ipcRenderer.invoke('git:init', request),
+  saveNavigation: (bookmarks: string[], locationHistory: string[]) =>
+    ipcRenderer.invoke('settings:save-navigation', bookmarks, locationHistory),
+  getGitLabConfig: (repoPath: string) => ipcRenderer.invoke('gitlab:config', repoPath),
+  saveGitLabConfig: (repoPath: string, baseUrl: string, projectPath: string, token?: string, clearToken?: boolean) =>
+    ipcRenderer.invoke('gitlab:save-config', repoPath, baseUrl, projectPath, token, clearToken),
+  getGitLabOverview: (repoPath: string) => ipcRenderer.invoke('gitlab:overview', repoPath),
+  createGitLabMergeRequest: (repoPath: string, title: string, sourceBranch: string, targetBranch: string, description?: string) =>
+    ipcRenderer.invoke('gitlab:create-mr', repoPath, title, sourceBranch, targetBranch, description),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
   revealRepository: (repoPath: string) => ipcRenderer.invoke('shell:reveal-repository', repoPath),
   revealPath: (repoPath: string, filePath: string) =>
     ipcRenderer.invoke('shell:reveal-path', repoPath, filePath),

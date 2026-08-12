@@ -11,7 +11,7 @@
 - 一个已经存在的本地 Git 仓库
 - 如果仓库需要身份验证，Git 中应当已经配置好可用凭据
 
-P4Git 0.1 不捆绑 Git。它可以使用 Git for Windows，也可以使用其他桌面客户端提供的兼容 `git.exe`。
+P4Git 不捆绑 Git。它可以使用 Git for Windows，也可以使用其他桌面客户端提供的兼容 `git.exe`。
 
 ## 选择版本
 
@@ -24,7 +24,7 @@ P4Git 0.1 不捆绑 Git。它可以使用 Git for Windows，也可以使用其�
 
 ## Windows 安全提示
 
-0.1 版本的二进制文件尚未代码签名。Windows 可能显示“未知发布者”或“Windows 已保护你的电脑”。
+当前发布的二进制文件尚未代码签名。Windows 可能显示“未知发布者”或“Windows 已保护你的电脑”。
 
 如果文件来自官方 [P4Git Releases](https://github.com/forestlii/p4git/releases) 页面：
 

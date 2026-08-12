@@ -14,7 +14,9 @@ P4Git 有意沿用 P4V 桌面端的结构，而不是常见 Git 客户端的仪�
 - **详情面板**：主表格下方的 Details、Files、Jobs、Diff Summary。
 - **Log 与状态栏**：显示执行过的操作、结果、当前路径、upstream 和就绪状态。
 
-**Timelapse** 使用 Git blame 提供逐行历史。**Revgraph** 会打开 Git 分支对应的 **Stream Graph**。只有无法安全取消的同步 Git 进程所对应的 **Cancel** 暂时禁用。
+**Timelapse** 使用 Git blame 提供逐行历史。**Revgraph** 会打开使用真实 commit parent 关系绘制的 **Stream Graph**。Git 命令运行时 **Cancel** 会启用，并终止由 P4Git 启动的命令进程树。
+
+位置栏可以直接编辑并按 Enter 导航；右侧按钮提供最近地址、添加/移除书签和书签列表。左侧 Workspace 下拉框切换最近仓库，表格列标题可点击排序；树和主列表各自有过滤入口。
 
 ## Git 操作映射
 
@@ -23,14 +25,14 @@ P4Git 保留 P4V 的操作名称，底层执行 Git：
 | P4Git / P4V 操作 | 对应 Git 行为 |
 |---|---|
 | Refresh | 重新读取 `git status`、历史、分支和当前目录 |
-| Get Latest | `git pull --ff-only` |
+| Get Latest | 先 Fetch；可快进时自动更新，分叉时明确选择 Merge/Rebase |
 | Checkout | Workspace 中把已跟踪修改加入 Ready to submit；Depot 中取出所选分支版本后加入 Ready to submit；干净文件无需 Git 锁 |
 | Add | 用 `git add` 加入所选未跟踪文件 |
 | Delete | `git rm` 删除所选已跟踪文件并暂存删除 |
 | Revert | 确认后把所选文件的索引和工作树恢复到 `HEAD`；Add 文件保留在磁盘 |
 | Diff | 对比工作区、索引、所选 Depot 分支或提交的文本差异 |
 | Timelapse | 用 `git blame --line-porcelain` 显示逐行作者、提交和时间 |
-| Revgraph | 打开以 Git 分支映射的 Stream Graph |
+| Revgraph | 打开以 commit parent 和 Git 分支绘制的多轨 Revision/Stream Graph |
 | Submit | 用 Ready to submit 创建本地 Git commit |
 | Connection > Fetch | `git fetch --all --prune` |
 | Connection > Push | 推送当前分支；需要时自动创建 upstream |
@@ -63,6 +65,8 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 通过 Pending 页的 **New Changelist...** 或 **Actions > New Changelist...** 创建列表。使用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Pending 文件，然后把它们拖到某个分组，或右键并使用 **Move to Changelist** 批量归组。该子菜单中的 **New Changelist...** 会创建新列表，并立即把全部选中文件移入其中。右键命名列表可提交、编辑、删除，或把其中全部文件移入 Ready。删除列表不会删除任何文件，其中的改动会回到 **Default changelist**。
 
 命名列表的归属信息保存在当前仓库的 `.git/p4git/changelists.json` 中。它在应用重启后仍然存在，但只属于当前 clone，也不可能进入 Git commit；列表改名和说明同样保存在这里。
+
+右键本地 Changelist 选择 **Shelve Changelist**，可把该列表文件保存到本地 Git stash 并清理工作区。通过 **Tools > Git > View Shelves** 执行 Unshelve 后，P4Git 会恢复改动及原 Changelist 文件归属。Shelf 只存在于当前 clone，不会自动上传服务器。
 
 把文件移入 **Ready to submit** 会执行暂存；把已暂存文件移回 Default 或命名列表会取消暂存，但不会丢弃工作区内容。部分暂存的文件可能同时出现在 Ready 和本地列表中，因为已暂存版本与工作区版本的差异不同。状态标记包括 `M`（修改）、`A`（新增）、`D`（删除）、`R`（重命名）、`C`（复制）、`?`（未跟踪）和 `!`（冲突）。
 
@@ -99,7 +103,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 **Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列显示最近 100 个 Git 提交。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
 
-右键提交可查看文件列表、与上一版本的完整 Diff、复制完整 commit hash、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。交互式 Rebase 暂未提供。
+每个提交左侧箭头可原位展开文件列表。右键提交可查看文件列表、与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
 
 ## History
 
@@ -109,7 +113,13 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ## Stream Graph
 
-**Stream Graph** 在 P4V 对应位置呈现 Git 分支。它会列出本地和远程分支、标记当前分支、新建分支，并在已有本地分支之间切换。右键分支可切换，或以该分支为起点新建分支。远程分支只读，但可以作为新本地分支的起点。
+**Stream Graph** 在 P4V 对应位置呈现 Git 拓扑。主表根据每个 commit 的 parent 绘制多轨线和合并连接；左侧列出本地和远程分支并标记当前分支。可以新建分支，右键分支可切换或以它为起点创建分支。远程分支只读，但可以作为新本地分支的起点。
+
+## Resolve 冲突
+
+通过 **Tools > Git > Resolve Conflicts** 打开三方解决器。文件列表右侧同时显示 Base、Ours、Theirs 和可编辑 Result。可以接受 Ours/Theirs，或编辑 Result 后标记为已解决；全部解决后使用 **Continue Operation** 继续 Merge、Rebase 或 Cherry-pick。二进制冲突不能手工编辑，但仍可选择 Ours 或 Theirs。Abort 操作仍位于 **Tools > Git**。
+
+Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会自动打开 Resolve。状态栏持续显示当前操作、冲突数，以及是否已经可以 Continue。
 
 ## 原生右键菜单
 
@@ -131,18 +141,28 @@ Merge、Rebase 和 Cherry-pick 发生冲突时，Git 会保留进行中的操作
 
 ## Workspaces
 
-**Workspaces** 页签显示最后一个工作区和最多 8 个最近仓库。双击表格行即可打开。使用 **File > Open Workspace** 可以选择另一个已有 Git 仓库。
+**Workspaces** 页签显示最近仓库。双击表格行即可打开。使用 **File > Open Workspace** 选择已有仓库，使用 **File > Clone Repository** 输入 URL 和父目录，或用 **File > Init Repository** 在所选目录创建新仓库和初始分支。
 
 使用 **Tools > Git Settings** 可以选择 Git for Windows 或 UGit 自带的 `git.exe`。P4Git 会先执行 `git --version` 验证，再保存路径。
 
 ## 远程同步
 
-- **Get Latest** 只允许快进 Pull。本地与远程历史分叉时，请在 P4Git 0.1 之外选择合适的 Merge 或 Rebase。
+- **Get Latest** 会先 Fetch。可安全快进时自动更新；本地与远程历史分叉时，会显示双方提交数，并要求选择 Merge、Rebase 或 Cancel。
 - **Connection > Fetch** 更新远程跟踪引用，不修改本地文件。
 - **Connection > Push** 执行普通 Push；新的本地分支会推送到 `origin` 并设置 upstream。
 
+**Connection > Push** 会先打开预览窗口，可选择 Remote、本地分支、远端分支和是否设置 upstream，并查看即将推送的 commit。**Tools > Git > Manage Remotes** 可新增、改名、修改 Fetch/Push URL 或删除 Remote。分支右键提供 Rename 和 **Compare with Current**，后者分别列出 Incoming 与 Outgoing commits。
+
+**Tools > Git > Amend Last Commit** 可以更改最近一次提交说明，并把当前 staged 文件加入该提交。Amend 会改变 commit ID；已经共享给他人的提交不应 Amend。
+
 终端交互提示已禁用。HTTPS 凭据需要已经保存在 Git Credential Manager 中；SSH 认证需要通过已有密钥或 Agent 正常工作。
+
+## GitLab Merge Request、CI 与 Jobs
+
+通过 **Tools > Git > GitLab** 打开面板。P4Git 会从常见 HTTPS、SSH 或 `git@host:group/project.git` origin 推导服务地址和项目路径，也可以手工修改。私有项目通常需要 GitLab Personal Access Token；Token 仅在主进程使用，并通过当前 Windows 账户的系统加密能力保存，React 页面不能读回明文。
+
+连接后可浏览打开的 Merge Request、最近 Pipeline 和 Issue；点击条目会在浏览器打开 GitLab。可从当前分支向所选目标分支创建 MR。主窗口下方 **Jobs** 使用 GitLab Issues 作为 P4V Jobs 的近似映射。当前版本不包含 Pipeline Job 实时日志、审批操作或自动把 Issue 关联到 commit。
 
 ## 刻意不自动执行的操作
 
-P4Git 0.1 不会静默 Merge、Rebase、删除未跟踪文件、丢弃已暂存内容、解决冲突、绕过 Git Hooks，也不会模拟 Perforce 文件锁。这些操作需要额外上下文，客户端不应该替用户猜测。
+P4Git 不会静默 Merge、Rebase、删除未跟踪文件、丢弃已暂存内容、自动选择冲突版本、绕过 Git Hooks，也不会模拟 Perforce 文件锁。这些操作需要额外上下文，客户端不应该替用户猜测。

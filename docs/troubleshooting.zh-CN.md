@@ -8,7 +8,7 @@
 
 ## 所选目录不是仓库
 
-P4Git 使用 `git rev-parse --show-toplevel` 解析根目录。请选择已经 Clone 或 Init 的仓库内部目录。0.1 版本暂不提供仓库克隆功能。
+P4Git 使用 `git rev-parse --show-toplevel` 解析根目录。请选择已经 Clone 或 Init 的仓库内部目录，或使用 **File > Clone Repository / Init Repository**。
 
 ## Fetch、Pull 或 Push 提示身份验证失败
 
@@ -20,9 +20,9 @@ P4Git 设置了 `GIT_TERMINAL_PROMPT=0`，不会在后台弹出隐藏的终端�
 
 修改环境级凭据或 SSH Agent 配置后，请重启 P4Git。
 
-## Pull 提示“无法快进”
+## Get Latest 检测到分支分叉
 
-本地与 upstream 历史已经分叉。P4Git 刻意使用 `--ff-only`。请检查相关提交，按照团队认可的方式明确执行 Merge 或 Rebase，然后刷新 P4Git。
+P4Git 会先 Fetch，但不会立即修改本地历史；随后显示本地和远端各自独有的提交数量，并让你选择 **Merge**、**Rebase** 或 **Cancel**。Merge 保留双方历史，可能创建合并提交；Rebase 产生线性历史，但会改写本地提交 ID。如果工作区变更阻止操作，请先用 Changelist 整理，再 Stash 或 Submit。
 
 ## Commit 要求用户名或邮箱
 
@@ -48,7 +48,7 @@ git config user.email "you@example.com"
 
 ## Windows 显示“未知发布者”
 
-初始版本尚未代码签名。请只从官方 Release 页面下载，对比公开的 SHA-256 校验值，并遵循所在组织的软件安装规范。不要在系统中全局关闭 SmartScreen。
+当前二进制文件尚未代码签名。请只从官方 Release 页面下载，对比公开的 SHA-256 校验值，并遵循所在组织的软件安装规范。不要在系统中全局关闭 SmartScreen。
 
 ## 删除便携版后仍保留设置
 

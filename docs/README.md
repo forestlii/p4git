@@ -27,7 +27,7 @@ P4Git is a Windows desktop client that applies a P4V-style workspace and changel
 
 ## Current Scope
 
-P4Git 0.1 operates on existing repositories and delegates authentication, credential storage, hooks, filters, and network protocols to the selected Git executable. It deliberately does not implement clone, a credential dialog, conflict editing, or untracked-file deletion yet.
+P4Git can open, clone, or initialize repositories. It delegates Git transport authentication, Git credentials, hooks, filters, and protocols to the selected Git executable. GitLab API tokens are stored separately with operating-system encryption, and untracked files are never deleted implicitly.
 
 ## Source Layout
 

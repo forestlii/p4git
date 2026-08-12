@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.1.3-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.3.0-0c8b87)
 
 ## Highlights
 
@@ -18,13 +18,18 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Depot | Browse the committed tree of an upstream, HEAD, local branch, or remote branch |
 | Workspace | Browse an existing Git repository as a collapsible workspace tree and return to recent workspaces |
 | Changelists | Create persistent local named changelists, multi-select and move files between them, and submit one list at a time |
+| Shelve | Store a changelist as a local Git stash and restore its file assignments on Unshelve |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
 | External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
 | Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
 | Submitted | Browse recent Git commits in a P4V-style submitted changes table |
-| Stream Graph | Inspect local and remote Git branches, create a branch, or switch local branches |
-| Sync | Fetch, fast-forward-only pull, and push with automatic upstream setup |
+| Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships and operate on local/remote branches |
+| Resolve | Compare Base/Ours/Theirs, accept a side or edit the result, then continue Merge/Rebase/Cherry-pick |
+| GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
+| Navigation | Editable locations, history, bookmarks, workspace selector, tree sort/filter, and sortable columns |
+| Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
+| Push / Remotes | Manage remotes, select a target ref, and preview outgoing commits before Push |
 | Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |
 
 ## Download
@@ -42,7 +47,7 @@ The current binaries are not code-signed. Windows may show an **Unknown publishe
 
 1. Install P4Git or run the portable executable.
 2. Confirm that P4Git finds Git. If it does not, choose a Git for Windows or UGit `git.exe`.
-3. Select **Open Git workspace** and choose an existing repository.
+3. Open an existing Git workspace, or use **File > Clone Repository / Init Repository**.
 4. Open **Pending**. Create named changelists as needed, then drag files or use their context menu to organize the work.
 5. Right-click a changelist and choose **Submit Changelist**, or move files to **Ready to submit** and choose **Submit**.
 6. Use **Get Latest** and the **Connection** menu to pull, fetch, or push.
@@ -60,15 +65,15 @@ Full documentation lives in [docs/](docs/README.md):
 
 - Windows 10 or newer, x64
 - Git 2.23 or newer
-- An existing local Git repository for the current 0.1 release
 - Existing Git credentials for authenticated fetch/pull/push operations
+- A GitLab URL and usually a Personal Access Token with `api` scope for private-project integration
 
 ## Safety Model
 
 - The React renderer has no Node.js access; it talks to Electron through a typed IPC allowlist.
 - Git is invoked with argument arrays through `execFile`, never through a command shell.
 - File operations are restricted to paths inside the selected repository.
-- Pull uses `--ff-only`, avoiding an unexpected merge commit.
+- Get Latest fetches first, fast-forwards when safe, and asks before Merge or Rebase when histories diverge.
 - Discarding tracked working-tree changes requires confirmation; untracked files are never deleted by P4Git.
 
 ## Development
@@ -89,7 +94,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.1.3** is a Windows-first release. Clone UI, credential prompts, visual conflict resolution, partial-hunk staging, Git LFS locks, and GitLab merge request integration remain planned. Stash, Reflog, Merge, Rebase, Cherry-pick, Reset, and Tag are grouped under **Tools > Git** and contextual **Git** submenus.
+Version **0.3.0** completes the daily workflow with automatic Resolve entry, changelist Shelve/Unshelve, remote management, Push previews, Incoming/Outgoing branch comparison, branch rename, and Amend. Partial-hunk staging, Git LFS locks, and GitHub pull requests remain planned.
 
 ## License
 

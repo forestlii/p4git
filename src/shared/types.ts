@@ -74,12 +74,123 @@ export interface StashEntry {
   subject: string
 }
 
+export interface ShelfInfo {
+  hash: string
+  name: string
+  description: string
+  changelistId?: string
+  paths: string[]
+  createdAt: string
+}
+
+export interface RemoteInfo {
+  name: string
+  fetchUrl: string
+  pushUrl: string
+}
+
+export interface BranchComparison {
+  current: string
+  selected: string
+  incoming: CommitInfo[]
+  outgoing: CommitInfo[]
+}
+
+export interface PushRequest {
+  repoPath: string
+  remote: string
+  localBranch: string
+  remoteBranch: string
+  setUpstream: boolean
+}
+
+export interface PushPreview extends PushRequest {
+  commits: CommitInfo[]
+  remoteUrl: string
+}
+
+export interface OperationState {
+  operation?: 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+  conflicts: number
+  canContinue: boolean
+  canAbort: boolean
+}
+
 export interface ReflogEntry {
   hash: string
   shortHash: string
   selector: string
   date: string
   subject: string
+}
+
+export interface GraphCommit extends CommitInfo {
+  parents: string[]
+}
+
+export interface ConflictFile {
+  path: string
+  base: string
+  ours: string
+  theirs: string
+  binary: boolean
+}
+
+export type ConflictResolution = 'ours' | 'theirs' | 'manual'
+
+export interface GitLabConfig {
+  baseUrl: string
+  projectPath: string
+  tokenConfigured: boolean
+}
+
+export interface GitLabIssue {
+  iid: number
+  title: string
+  state: string
+  webUrl: string
+  labels: string[]
+  assignees: string[]
+}
+
+export interface GitLabMergeRequest {
+  iid: number
+  title: string
+  state: string
+  sourceBranch: string
+  targetBranch: string
+  author: string
+  webUrl: string
+  draft: boolean
+  pipelineStatus?: string
+}
+
+export interface GitLabPipeline {
+  id: number
+  iid: number
+  ref: string
+  sha: string
+  status: string
+  webUrl: string
+  updatedAt: string
+}
+
+export interface GitLabOverview {
+  config: GitLabConfig
+  issues: GitLabIssue[]
+  mergeRequests: GitLabMergeRequest[]
+  pipelines: GitLabPipeline[]
+}
+
+export interface CloneRequest {
+  url: string
+  parentDirectory: string
+  folderName?: string
+}
+
+export interface InitRequest {
+  directory: string
+  initialBranch: string
 }
 
 export interface LocalChangelist {
@@ -92,10 +203,20 @@ export interface LocalChangelist {
 export interface ChangelistState {
   changelists: LocalChangelist[]
   assignments: Record<string, string>
+  shelves: ShelfInfo[]
 }
 
 export type ResetMode = 'soft' | 'mixed' | 'hard'
-export type AbortOperation = 'merge' | 'rebase' | 'cherry-pick'
+export type AbortOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+export type PullOutcome = 'up-to-date' | 'fast-forwarded' | 'ahead' | 'diverged'
+export type DivergenceChoice = 'merge' | 'rebase' | 'cancel'
+
+export interface PullResult {
+  outcome: PullOutcome
+  upstream: string
+  ahead: number
+  behind: number
+}
 
 export type ContextMenuKind =
   | 'workspace-file'
@@ -147,6 +268,8 @@ export type ContextMenuAction =
   | 'git-merge'
   | 'git-rebase'
   | 'git-delete-branch'
+  | 'git-rename-branch'
+  | 'git-compare-branch'
   | 'git-fetch'
   | 'git-pull'
   | 'git-push'
@@ -157,12 +280,14 @@ export type ContextMenuAction =
   | 'new-changelist-with-selection'
   | 'edit-changelist'
   | 'delete-changelist'
+  | 'shelve-changelist'
   | 'stage-changelist'
   | 'submit-changelist'
   | 'get-revision'
   | 'diff-previous'
   | 'diff-head'
   | 'show-submitted'
+  | 'revert-commit'
   | `move-changelist:${string}`
 
 export interface ContextMenuRequest {
@@ -207,6 +332,14 @@ export type MenuAction =
   | 'git-abort-merge'
   | 'git-abort-rebase'
   | 'git-abort-cherry-pick'
+  | 'git-abort-revert'
+  | 'git-remotes'
+  | 'git-shelves'
+  | 'git-amend'
+  | 'gitlab'
+  | 'resolve-conflicts'
+  | 'clone'
+  | 'init'
   | 'new-changelist'
   | 'history'
 
@@ -216,6 +349,8 @@ export interface AppSettings {
   diffToolArguments?: string
   recentRepositories: string[]
   lastRepository?: string
+  bookmarks?: string[]
+  locationHistory?: string[]
 }
 
 export const DEFAULT_DIFF_TOOL_ARGUMENTS = '/solo /readonly /lefttitle={leftTitle} /righttitle={rightTitle} "{left}" "{right}"'
@@ -262,6 +397,9 @@ export interface P4GitApi {
   chooseRepository(): Promise<string | undefined>
   chooseGitExecutable(): Promise<GitHealth | undefined>
   chooseDiffExecutable(): Promise<string | undefined>
+  chooseDivergenceStrategy(result: PullResult): Promise<DivergenceChoice>
+  chooseCloneParent(): Promise<string | undefined>
+  chooseInitDirectory(): Promise<string | undefined>
   getSettings(): Promise<AppSettings>
   saveDiffSettings(executable?: string, argumentsTemplate?: string): Promise<AppSettings>
   getGitHealth(): Promise<GitHealth>
@@ -271,7 +409,7 @@ export interface P4GitApi {
   stage(repoPath: string, paths: string[]): Promise<void>
   unstage(repoPath: string, paths: string[]): Promise<void>
   discard(repoPath: string, paths: string[]): Promise<void>
-  commit(repoPath: string, message: string): Promise<string>
+  commit(repoPath: string, message: string, amend?: boolean): Promise<string>
   getHistory(repoPath: string, limit?: number): Promise<CommitInfo[]>
   getBranches(repoPath: string): Promise<BranchInfo[]>
   listDirectory(repoPath: string, relativePath?: string): Promise<WorkspaceEntry[]>
@@ -282,6 +420,11 @@ export interface P4GitApi {
   getBlame(repoPath: string, filePath: string, ref?: string): Promise<BlameLine[]>
   getCommitFiles(repoPath: string, hash: string): Promise<RevisionFile[]>
   getCommitDiff(repoPath: string, hash: string): Promise<string>
+  getGraph(repoPath: string, limit?: number): Promise<GraphCommit[]>
+  getConflicts(repoPath: string): Promise<ConflictFile[]>
+  resolveConflict(repoPath: string, filePath: string, resolution: ConflictResolution, content?: string): Promise<void>
+  continueOperation(repoPath: string): Promise<string>
+  revertCommits(repoPath: string, refs: string[]): Promise<string>
   markDelete(repoPath: string, paths: string[]): Promise<void>
   revert(repoPath: string, paths: string[]): Promise<void>
   restoreFromRef(repoPath: string, ref: string, paths: string[]): Promise<void>
@@ -291,6 +434,8 @@ export interface P4GitApi {
   deleteChangelist(repoPath: string, id: string): Promise<ChangelistState>
   assignChangelist(repoPath: string, paths: string[], id?: string): Promise<ChangelistState>
   prepareChangelist(repoPath: string, paths: string[]): Promise<void>
+  shelveChangelist(repoPath: string, id: string | undefined, name: string, description: string, paths: string[]): Promise<ChangelistState>
+  unshelve(repoPath: string, hash: string): Promise<ChangelistState>
   getStashes(repoPath: string): Promise<StashEntry[]>
   stash(repoPath: string, message: string, paths?: string[]): Promise<string>
   applyStash(repoPath: string, ref: string, pop?: boolean): Promise<string>
@@ -302,11 +447,28 @@ export interface P4GitApi {
   createTag(repoPath: string, name: string, ref: string): Promise<void>
   reset(repoPath: string, ref: string, mode: ResetMode): Promise<void>
   deleteBranch(repoPath: string, branch: string): Promise<void>
+  renameBranch(repoPath: string, oldName: string, newName: string): Promise<void>
+  compareBranch(repoPath: string, branch: string): Promise<BranchComparison>
   abort(repoPath: string, operation: AbortOperation): Promise<void>
   checkout(request: CheckoutRequest): Promise<void>
   fetch(repoPath: string): Promise<void>
-  pull(repoPath: string): Promise<void>
+  pull(repoPath: string): Promise<PullResult>
   push(repoPath: string): Promise<void>
+  getRemotes(repoPath: string): Promise<RemoteInfo[]>
+  saveRemote(repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string): Promise<RemoteInfo[]>
+  deleteRemote(repoPath: string, name: string): Promise<RemoteInfo[]>
+  getPushPreview(request: PushRequest): Promise<PushPreview>
+  pushTo(request: PushRequest): Promise<void>
+  getOperationState(repoPath: string): Promise<OperationState>
+  cancelOperations(): Promise<number>
+  cloneRepository(request: CloneRequest): Promise<string>
+  initRepository(request: InitRequest): Promise<string>
+  saveNavigation(bookmarks: string[], locationHistory: string[]): Promise<AppSettings>
+  getGitLabConfig(repoPath: string): Promise<GitLabConfig>
+  saveGitLabConfig(repoPath: string, baseUrl: string, projectPath: string, token?: string, clearToken?: boolean): Promise<GitLabConfig>
+  getGitLabOverview(repoPath: string): Promise<GitLabOverview>
+  createGitLabMergeRequest(repoPath: string, title: string, sourceBranch: string, targetBranch: string, description?: string): Promise<GitLabMergeRequest>
+  openExternal(url: string): Promise<void>
   revealRepository(repoPath: string): Promise<void>
   revealPath(repoPath: string, filePath: string): Promise<void>
   openFile(repoPath: string, filePath: string): Promise<string | undefined>

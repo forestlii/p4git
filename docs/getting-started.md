@@ -24,7 +24,7 @@ Both packages store application settings in the current Windows user profile, in
 
 ## Windows Security Warning
 
-The 0.1 binaries are not code-signed. Windows may display **Unknown publisher** or **Windows protected your PC**.
+The currently published binaries are not code-signed. Windows may display **Unknown publisher** or **Windows protected your PC**.
 
 If you downloaded the file from the official [P4Git Releases](https://github.com/forestlii/p4git/releases) page:
 
