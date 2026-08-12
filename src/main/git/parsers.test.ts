@@ -131,7 +131,7 @@ describe('parseRevisionFiles', () => {
     expect(parseRevisionFiles(output)).toEqual([
       { kind: 'M', path: 'src/app.ts' },
       { kind: 'A', path: 'README.md' },
-      { kind: 'R', path: 'old.ts → new.ts' }
+      { kind: 'R', path: 'new.ts', oldPath: 'old.ts' }
     ])
   })
 })

@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.5.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.0-0c8b87)
 
 ## Highlights
 
@@ -24,13 +24,13 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
 | Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
 | Submitted | Browse recent Git commits in a P4V-style submitted changes table |
-| Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships and operate on local/remote branches |
-| Selective branch merge | Compare another branch with the current branch, multi-select its commits, and apply them in dependency order with Resolve support |
+| Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |
+| Selective branch merge | Inspect commit details and changed files, then apply selected commits into a new local Changelist without creating a Git commit |
 | Resolve | Resolve individual conflict blocks, edit the merged result, choose whole-file sides, or launch a configured external 3-way merge tool |
 | Get Revision | Resolve a branch, tag, hash, or date, preview its commit/files, and restore one or more workspace targets |
 | Git LFS locks | Inspect, create, batch unlock, and force-unlock remote Git LFS locks |
 | Custom workspace | Drag pane dividers and file columns; select classic/light/dark themes, density, text size, and toolbar labels |
-| Task progress | Inspect running/succeeded/failed Git work, retain command details, and cancel active processes |
+| Task progress | See immediate Fetch activity in the footer and inspect/cancel running Git work in the task center |
 | GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
 | Navigation | Editable locations, history, bookmarks, workspace selector, tree sort/filter, and sortable columns |
 | Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
@@ -99,7 +99,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.5.0** adds selective branch merging: multi-select commits from another branch in **Compare with Current** or Revision Graph, apply them to the current branch in dependency order, and continue the remaining sequence after resolving conflicts.
+Version **0.6.0** completes the selective-merge review workflow: Fetch now shows activity, Stream Graph is resizable and filterable, Compare exposes commit/file details and local diffs, and selected commits are applied into a new local Changelist without creating a Git commit. Patch-equivalent commits already present on the current branch are identified before merging.
 
 ## License
 

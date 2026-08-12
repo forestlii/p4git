@@ -781,9 +781,15 @@ textarea:focus-visible {
 }
 
 .revision-graph-layout { min-width: 850px; height: 100%; }
-.graph-columns { display: grid; min-height: calc(100% - 31px); grid-template-columns: 210px minmax(640px, 1fr); }
-.graph-refs { overflow: auto; border-right: 1px solid #aaa; background: #f6f6f6; }
+.graph-columns { display: grid; min-height: calc(100% - 31px); }
+.graph-refs { min-width: 0; overflow: auto; background: #f6f6f6; }
 .graph-refs > strong { display: block; padding: 7px; border-bottom: 1px solid #bbb; background: #e9e9e9; }
+.graph-ref-filter { position: sticky; z-index: 1; top: 0; display: grid; height: 29px; grid-template-columns: 16px minmax(0, 1fr) 22px; align-items: center; gap: 3px; padding: 3px 5px; border-bottom: 1px solid #bbb; background: #f6f6f6; }
+.graph-ref-filter input { min-width: 0; height: 22px; border: 1px solid #aaa; padding: 2px 5px; }
+.graph-ref-filter button { display: grid; height: 21px; place-items: center; border: 0; background: transparent; }
+.graph-ref-splitter { cursor: col-resize; border-inline: 1px solid #aaa; background: linear-gradient(90deg, #ddd, #f7f7f7 50%, #ccc); }
+.graph-ref-splitter:hover { background: #88c5df; }
+.graph-ref-empty { padding: 12px 8px; color: #777; }
 .graph-refs > button { display: flex; width: 100%; min-height: 23px; align-items: center; gap: 6px; overflow: hidden; padding: 3px 7px; border: 0; background: transparent; text-align: left; }
 .graph-refs > button:hover { background: #e2f0f7; }
 .graph-refs > button.current { background: #cfe8f5; font-weight: 700; }
@@ -972,6 +978,12 @@ textarea:focus-visible {
 
 .operation-status { display: inline-flex; height: 19px; align-items: center; gap: 4px; margin-left: 8px; padding: 0 6px; border: 1px solid #c58628; background: #fff3cf; color: #88540d; }
 
+.status-running { position: relative; display: inline-flex; height: 20px; min-width: 190px; align-items: center; gap: 5px; overflow: hidden; padding: 0 7px 3px; border: 0; background: transparent; color: #245d78; text-align: left; }
+.status-running > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-running > i { position: absolute; height: 2px; overflow: hidden; inset: auto 6px 0; background: #cbd8de; }
+.status-running > i > b { position: absolute; width: 38%; height: 100%; background: #159ac3; animation: status-progress 1.25s ease-in-out infinite; }
+@keyframes status-progress { from { left: -38%; } to { left: 100%; } }
+
 .status-ready {
   display: grid;
   width: 16px;
@@ -981,6 +993,7 @@ textarea:focus-visible {
   background: #54ae2a;
   color: white;
 }
+.status-ready.running { background: #168fb6; }
 
 .modal-backdrop {
   position: fixed;
@@ -1007,7 +1020,10 @@ textarea:focus-visible {
 .compare-dialog,
 .revision-dialog,
 .lfs-dialog,
-.task-dialog {
+.task-dialog,
+.commit-details-dialog,
+.text-diff-dialog,
+.selective-merge-dialog {
   border: 1px solid #777;
   background: #f1f1f1;
   box-shadow: 0 8px 28px rgb(0 0 0 / 28%);
@@ -1019,6 +1035,10 @@ textarea:focus-visible {
 .manager-dialog,
 .push-dialog,
 .compare-dialog { width: min(900px, calc(100vw - 60px)); }
+.commit-details-dialog,
+.selective-merge-dialog { width: min(940px, calc(100vw - 60px)); }
+.text-diff-dialog { width: min(1100px, calc(100vw - 50px)); }
+.nested-modal { z-index: 70; }
 .revision-dialog,
 .lfs-dialog,
 .task-dialog { width: min(980px, calc(100vw - 60px)); }
@@ -1065,6 +1085,36 @@ textarea:focus-visible {
 .compare-commit input { width: 14px; height: 14px; margin: 0; pointer-events: none; }
 .compare-commit span,
 .compare-commit em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-commit.integrated { color: #738087; background: #f3f6f7; }
+.compare-integrated-head { display: flex !important; min-height: 27px !important; align-items: center !important; gap: 6px !important; padding: 5px 8px !important; border-block: 1px solid #b6c7ce !important; background: #e8f2ed !important; color: #347454; font-weight: 700; }
+.compare-readonly { display: grid; width: 100%; min-height: 27px; grid-template-columns: 82px minmax(0, 1fr) 110px; align-items: center; gap: 7px; padding: 3px 8px; border: 0; border-bottom: 1px solid #eee; color: inherit; background: white; text-align: left; }
+.compare-readonly:hover { background: #edf6fa; }
+.compare-readonly span,
+.compare-readonly em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.commit-details-summary { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 5px 9px; padding: 9px; border-bottom: 1px solid #aaa; background: white; }
+.commit-details-summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-message { max-height: 115px; min-height: 52px; overflow: auto; margin: 0; padding: 8px; border-bottom: 1px solid #aaa; background: #fafafa; font: 12px/1.4 Consolas, monospace; white-space: pre-wrap; }
+.commit-files { height: min(390px, calc(100vh - 365px)); overflow: auto; background: white; }
+.commit-file-head,
+.commit-files > button { display: grid; width: 100%; min-height: 26px; grid-template-columns: 75px minmax(0, 1fr) minmax(0, .8fr); align-items: center; gap: 7px; padding: 3px 8px; border: 0; border-bottom: 1px solid #e5e5e5; background: white; text-align: left; }
+.commit-file-head { position: sticky; z-index: 1; top: 0; min-height: 25px; border-bottom-color: #aaa; background: #e9e9e9; font-weight: 700; }
+.commit-files > button:hover { background: #dceff8; }
+.commit-files > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-file-status { display: flex; align-items: center; gap: 5px; }
+.text-diff-dialog > pre { height: min(660px, calc(100vh - 150px)); overflow: auto; margin: 0; padding: 9px; background: #fff; font: 12px/1.45 Consolas, monospace; white-space: pre; }
+
+.selective-merge-form { display: grid; gap: 8px; padding: 10px; background: white; }
+.selective-merge-form > label { display: grid; grid-template-columns: 175px minmax(0, 1fr); align-items: center; gap: 8px; font-weight: 700; }
+.selective-merge-form input,
+.selective-merge-form textarea { min-width: 0; border: 1px solid #999; padding: 4px 6px; background: white; font-weight: 400; }
+.selective-merge-form input { height: 26px; }
+.selective-merge-form textarea { height: 78px; resize: vertical; }
+.selective-commit-list { max-height: min(260px, calc(100vh - 430px)); overflow: auto; border: 1px solid #aaa; }
+.selective-commit-list > div { display: grid; min-height: 25px; grid-template-columns: 90px minmax(0, 1fr) 140px; align-items: center; gap: 7px; padding: 3px 7px; border-bottom: 1px solid #eee; }
+.selective-commit-list span,
+.selective-commit-list em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selective-commit-list em { color: #68757b; font-style: normal; }
 
 .conflict-body {
   display: grid;

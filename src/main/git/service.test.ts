@@ -10,6 +10,7 @@ import { expandDiffToolArguments, expandMergeToolArguments, GitService } from '.
 
 const execFileAsync = promisify(execFile)
 const temporaryRepositories: string[] = []
+const normalizeLines = (value: string): string => value.replace(/\r\n/g, '\n')
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
   return (await execFileAsync('git', args, { cwd, encoding: 'utf8', windowsHide: true })).stdout
@@ -197,9 +198,14 @@ describe('GitService Git-native operations', () => {
     const graph = await subject.graph(root)
     expect(graph[0]).toMatchObject({ hash: change, subject: 'change to undo' })
     expect(graph[0].parents).toHaveLength(1)
+    await expect(subject.commitDetails(root, change)).resolves.toMatchObject({
+      hash: change,
+      message: 'change to undo',
+      files: [{ kind: 'M', path: 'tracked.txt' }]
+    })
 
     await subject.revertCommits(root, [change])
-    expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('initial\n')
+    expect(normalizeLines(await readFile(join(root, 'tracked.txt'), 'utf8'))).toBe('initial\n')
     expect((await git(root, 'log', '-1', '--format=%s')).trim()).toContain('Revert')
   }, 15_000)
 
@@ -249,12 +255,18 @@ describe('GitService Git-native operations', () => {
     await git(root, 'commit', '-m', 'selected second')
     const second = (await git(root, 'rev-parse', 'HEAD')).trim()
     await git(root, 'switch', 'main')
+    await writeFile(join(root, 'main-only.txt'), 'make the cherry-pick parent deterministic\n', 'utf8')
+    await git(root, 'add', 'main-only.txt')
+    await git(root, 'commit', '-m', 'main-only parent')
 
     await subject.cherryPickCommits(root, [second, first])
 
-    expect(await readFile(join(root, 'first.txt'), 'utf8')).toBe('first selected change\n')
-    expect(await readFile(join(root, 'second.txt'), 'utf8')).toBe('second selected change\n')
+    expect(normalizeLines(await readFile(join(root, 'first.txt'), 'utf8'))).toBe('first selected change\n')
+    expect(normalizeLines(await readFile(join(root, 'second.txt'), 'utf8'))).toBe('second selected change\n')
     expect((await git(root, 'log', '-2', '--format=%s')).trim().split(/\r?\n/)).toEqual(['selected second', 'selected first'])
+    const comparison = await subject.compareBranch(root, 'feature')
+    expect(comparison.incoming).toEqual([])
+    expect(comparison.integrated.map((commit) => commit.subject)).toEqual(['selected second', 'selected first'])
     await expect(subject.cherryPickCommits(root, [first])).rejects.toThrow('已经包含在当前分支中')
   }, 20_000)
 
@@ -281,8 +293,96 @@ describe('GitService Git-native operations', () => {
     await subject.continueOperation(root)
 
     expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('resolved selected version\n')
-    expect(await readFile(join(root, 'after-conflict.txt'), 'utf8')).toBe('remaining selected change\n')
+    expect(normalizeLines(await readFile(join(root, 'after-conflict.txt'), 'utf8'))).toBe('remaining selected change\n')
     expect((await git(root, 'log', '-2', '--format=%s')).trim().split(/\r?\n/)).toEqual(['selected after conflict', 'selected conflict'])
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: undefined, conflicts: 0 })
+  }, 20_000)
+
+  it('applies selected commits into a new local changelist without creating commits', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'first.txt'), 'first local changelist change\n', 'utf8')
+    await git(root, 'add', 'first.txt')
+    await git(root, 'commit', '-m', 'local changelist first')
+    const first = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(root, 'second.txt'), 'second local changelist change\n', 'utf8')
+    await git(root, 'add', 'second.txt')
+    await git(root, 'commit', '-m', 'local changelist second')
+    const second = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+    const head = (await git(root, 'rev-parse', 'HEAD')).trim()
+
+    const result = await subject.selectiveMergeCommits({
+      repoPath: root,
+      refs: [second, first],
+      changelistName: 'Merge feature selection',
+      description: 'Keep selected work local'
+    })
+
+    expect(result).toMatchObject({ applied: 2, total: 2, conflicted: false })
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(head)
+    expect((await git(root, 'diff', '--cached', '--name-only')).trim()).toBe('')
+    expect((await subject.summary(root)).changes.map((change) => change.path)).toEqual(['first.txt', 'second.txt'])
+    expect(result.state.assignments).toMatchObject({ 'first.txt': result.changelist.id, 'second.txt': result.changelist.id })
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: undefined, conflicts: 0 })
+  }, 20_000)
+
+  it('resumes a conflicted no-commit selective merge and keeps all files in its changelist', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'tracked.txt'), 'feature selective version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'selective conflict')
+    const conflicting = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(root, 'after-conflict.txt'), 'queued no-commit change\n', 'utf8')
+    await git(root, 'add', 'after-conflict.txt')
+    await git(root, 'commit', '-m', 'selective queued')
+    const queued = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'tracked.txt'), 'main selective version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'main before selective merge')
+    const head = (await git(root, 'rev-parse', 'HEAD')).trim()
+
+    const paused = await subject.selectiveMergeCommits({ repoPath: root, refs: [queued, conflicting], changelistName: 'Conflicted selection' })
+    expect(paused).toMatchObject({ applied: 0, total: 2, conflicted: true })
+    expect(paused.state.assignments['tracked.txt']).toBe(paused.changelist.id)
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: 'cherry-pick', conflicts: 1, changelistId: paused.changelist.id })
+
+    await subject.resolveConflict(root, 'tracked.txt', 'manual', 'resolved selective version\n')
+    await subject.continueOperation(root)
+
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(head)
+    expect((await git(root, 'diff', '--cached', '--name-only')).trim()).toBe('')
+    expect(normalizeLines(await readFile(join(root, 'after-conflict.txt'), 'utf8'))).toBe('queued no-commit change\n')
+    const state = await subject.changelists(root)
+    expect(state.assignments).toMatchObject({ 'tracked.txt': paused.changelist.id, 'after-conflict.txt': paused.changelist.id })
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: undefined, conflicts: 0 })
+  }, 25_000)
+
+  it('aborts a conflicted selective merge back to its clean starting point', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'tracked.txt'), 'feature abort version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'abort conflict source')
+    const source = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'tracked.txt'), 'main abort version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'main before abort')
+    const head = (await git(root, 'rev-parse', 'HEAD')).trim()
+
+    const paused = await subject.selectiveMergeCommits({ repoPath: root, refs: [source], changelistName: 'Temporary conflicted selection' })
+    expect(paused.conflicted).toBe(true)
+    await subject.abort(root, 'cherry-pick')
+
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(head)
+    expect((await git(root, 'status', '--porcelain')).trim()).toBe('')
+    expect((await subject.changelists(root)).changelists).toEqual([])
     await expect(subject.operationState(root)).resolves.toMatchObject({ operation: undefined, conflicts: 0 })
   }, 20_000)
 
@@ -352,7 +452,9 @@ describe('GitService Git-native operations', () => {
 
     await expect(subject.initRepository({ directory: initialized, initialBranch: 'develop' })).resolves.toBe(initialized)
     expect((await git(initialized, 'branch', '--show-current')).trim()).toBe('develop')
-    await expect(subject.summary(initialized)).resolves.toMatchObject({ root: initialized, branch: 'develop', changes: [] })
+    const initializedSummary = await subject.summary(initialized)
+    expect(initializedSummary).toMatchObject({ branch: 'develop', changes: [] })
+    expect(initializedSummary.root.replaceAll('\\', '/').toLowerCase()).toBe((await git(initialized, 'rev-parse', '--show-toplevel')).trim().replaceAll('\\', '/').toLowerCase())
     await expect(subject.history(initialized)).resolves.toEqual([])
     await expect(subject.graph(initialized)).resolves.toEqual([])
     await expect(subject.listTree(initialized, 'HEAD')).resolves.toEqual([])
@@ -363,6 +465,6 @@ describe('GitService Git-native operations', () => {
     await git(initialized, 'commit', '-m', 'initial')
 
     await expect(subject.cloneRepository({ url: initialized, parentDirectory: parent, folderName: 'cloned' })).resolves.toBe(cloned)
-    expect(await readFile(join(cloned, 'README.md'), 'utf8')).toBe('# Initialized\n')
+    expect(normalizeLines(await readFile(join(cloned, 'README.md'), 'utf8'))).toBe('# Initialized\n')
   }, 20_000)
 })

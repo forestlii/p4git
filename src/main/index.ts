@@ -16,7 +16,8 @@ import type {
   PullResult,
   PushRequest,
   InitRequest,
-  ResetMode
+  ResetMode,
+  SelectiveMergeRequest
 } from '../shared/types'
 import { GitService } from './git/service'
 import { SettingsStore } from './settings'
@@ -273,7 +274,7 @@ function contextMenuTemplate(
         item('Revert This Commit...', 'revert-commit'),
         separator,
         gitMenu([
-          item(request.multiple ? 'Merge Selected Commits into Current Branch...' : 'Merge Commit into Current Branch...', 'git-cherry-pick'),
+          item(request.multiple ? 'Merge Selected Commits into New Changelist...' : 'Merge Commit into New Changelist...', 'git-cherry-pick'),
           item('New Branch from Commit...', 'git-branch-from-commit'),
           item('Create Tag...', 'git-tag'),
           separator,
@@ -286,6 +287,20 @@ function contextMenuTemplate(
             ]
           }
         ])
+      ]
+    case 'compare-commit':
+      return [
+        item('View Commit Details...', 'view-commit-details'),
+        item('View Changed Files', 'commit-files'),
+        item('Diff Against Previous Revision', 'commit-diff'),
+        separator,
+        item('Copy Commit Hash', 'copy-hash')
+      ]
+    case 'compare-file':
+      return [
+        item('Diff Against Local Workspace', 'diff-local'),
+        separator,
+        item('Copy File Path', 'copy-path')
       ]
     case 'branch':
       return [
@@ -483,6 +498,9 @@ function registerIpc(): void {
   ipcMain.handle('git:commit-files', (_event, repoPath: string, hash: string) =>
     git.commitFiles(repoPath, hash)
   )
+  ipcMain.handle('git:commit-details', (_event, repoPath: string, hash: string) =>
+    git.commitDetails(repoPath, hash)
+  )
   ipcMain.handle('git:commit-diff', (_event, repoPath: string, hash: string) =>
     git.commitDiff(repoPath, hash)
   )
@@ -545,6 +563,9 @@ function registerIpc(): void {
   )
   ipcMain.handle('git:cherry-pick-commits', (_event, repoPath: string, refs: string[]) =>
     git.cherryPickCommits(repoPath, refs)
+  )
+  ipcMain.handle('git:selective-merge-commits', (_event, request: SelectiveMergeRequest) =>
+    git.selectiveMergeCommits(request)
   )
   ipcMain.handle('git:merge', (_event, repoPath: string, ref: string) => git.merge(repoPath, ref))
   ipcMain.handle('git:rebase', (_event, repoPath: string, ref: string) => git.rebase(repoPath, ref))
