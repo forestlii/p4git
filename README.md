@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.1-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.5.0-0c8b87)
 
 ## Highlights
 
@@ -25,6 +25,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
 | Submitted | Browse recent Git commits in a P4V-style submitted changes table |
 | Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships and operate on local/remote branches |
+| Selective branch merge | Compare another branch with the current branch, multi-select its commits, and apply them in dependency order with Resolve support |
 | Resolve | Resolve individual conflict blocks, edit the merged result, choose whole-file sides, or launch a configured external 3-way merge tool |
 | Get Revision | Resolve a branch, tag, hash, or date, preview its commit/files, and restore one or more workspace targets |
 | Git LFS locks | Inspect, create, batch unlock, and force-unlock remote Git LFS locks |
@@ -98,7 +99,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.4.1** fixes **New Branch from Here** with a reliable in-app dialog, remote-branch name suggestions, and validated local/remote start points. It includes the 0.4.0 Resolve, Get Revision, tasks, multi-selection, LFS Lock, and customizable-layout features.
+Version **0.5.0** adds selective branch merging: multi-select commits from another branch in **Compare with Current** or Revision Graph, apply them to the current branch in dependency order, and continue the remaining sequence after resolving conflicts.
 
 ## License
 

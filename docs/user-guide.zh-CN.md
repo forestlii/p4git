@@ -159,6 +159,8 @@ Merge、Rebase 和 Cherry-pick 发生冲突时，Git 会保留进行中的操作
 
 **Connection > Push** 会先打开预览窗口，可选择 Remote、本地分支、远端分支和是否设置 upstream，并查看即将推送的 commit。**Tools > Git > Manage Remotes** 可新增、改名、修改 Fetch/Push URL 或删除 Remote。分支右键提供 Rename 和 **Compare with Current**，后者分别列出 Incoming 与 Outgoing commits。
 
+如果只想把其他分支的部分工作合入当前检出的分支，打开 **Compare with Current**，用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Incoming commits，然后点击 **Merge Selected into <当前分支>**。Revision Graph 也支持多选提交后通过右键菜单执行同一操作。P4Git 底层使用 Git cherry-pick，并按父子依赖/从旧到新的顺序应用；没有冲突时自动完成，遇到冲突则打开 Resolve，全部解决后点击 **Continue** 会继续队列中的剩余提交。Merge commit 需要额外指定 mainline parent，因此当前不纳入这项选择性合并流程。
+
 **Tools > Git > Amend Last Commit** 可以更改最近一次提交说明，并把当前 staged 文件加入该提交。Amend 会改变 commit ID；已经共享给他人的提交不应 Amend。
 
 终端交互提示已禁用。HTTPS 凭据需要已经保存在 Git Credential Manager 中；SSH 认证需要通过已有密钥或 Agent 正常工作。

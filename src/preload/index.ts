@@ -84,6 +84,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:reflog', repoPath, limit),
   cherryPick: (repoPath: string, ref: string) =>
     ipcRenderer.invoke('git:cherry-pick', repoPath, ref),
+  cherryPickCommits: (repoPath: string, refs: string[]) =>
+    ipcRenderer.invoke('git:cherry-pick-commits', repoPath, refs),
   merge: (repoPath: string, ref: string) => ipcRenderer.invoke('git:merge', repoPath, ref),
   rebase: (repoPath: string, ref: string) => ipcRenderer.invoke('git:rebase', repoPath, ref),
   createTag: (repoPath: string, name: string, ref: string) =>

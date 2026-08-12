@@ -24,6 +24,7 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | External Diff tool | User-configured executable with argument templates; Beyond Compare defaults and built-in fallback | Implemented for file diffs |
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
 | Revision Graph / Stream Graph | Multi-lane topology from commit parents plus local/remote branch operations | Implemented |
+| Select changes from another branch | Multi-select branch-only commits and cherry-pick them into the current branch; Resolve and Continue preserve the remaining sequence | Implemented; merge commits require a separate mainline workflow |
 | Resolve | Read Base/Ours/Theirs Git index stages, accept a side or edit a merge result, then Continue | Implemented |
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
 | Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |

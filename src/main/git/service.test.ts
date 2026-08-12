@@ -236,6 +236,56 @@ describe('GitService Git-native operations', () => {
     expect((await subject.graph(root))[0].parents).toHaveLength(2)
   }, 20_000)
 
+  it('selectively merges multiple commits into the current branch in parent order', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'first.txt'), 'first selected change\n', 'utf8')
+    await git(root, 'add', 'first.txt')
+    await git(root, 'commit', '-m', 'selected first')
+    const first = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(root, 'second.txt'), 'second selected change\n', 'utf8')
+    await git(root, 'add', 'second.txt')
+    await git(root, 'commit', '-m', 'selected second')
+    const second = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+
+    await subject.cherryPickCommits(root, [second, first])
+
+    expect(await readFile(join(root, 'first.txt'), 'utf8')).toBe('first selected change\n')
+    expect(await readFile(join(root, 'second.txt'), 'utf8')).toBe('second selected change\n')
+    expect((await git(root, 'log', '-2', '--format=%s')).trim().split(/\r?\n/)).toEqual(['selected second', 'selected first'])
+    await expect(subject.cherryPickCommits(root, [first])).rejects.toThrow('已经包含在当前分支中')
+  }, 20_000)
+
+  it('keeps the remaining selected commits queued while a conflict is resolved', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'tracked.txt'), 'feature version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'selected conflict')
+    const conflicting = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(root, 'after-conflict.txt'), 'remaining selected change\n', 'utf8')
+    await git(root, 'add', 'after-conflict.txt')
+    await git(root, 'commit', '-m', 'selected after conflict')
+    const remaining = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'tracked.txt'), 'main version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'main edit')
+
+    await expect(subject.cherryPickCommits(root, [remaining, conflicting])).rejects.toBeDefined()
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: 'cherry-pick', conflicts: 1, canContinue: false })
+    await subject.resolveConflict(root, 'tracked.txt', 'manual', 'resolved selected version\n')
+    await subject.continueOperation(root)
+
+    expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('resolved selected version\n')
+    expect(await readFile(join(root, 'after-conflict.txt'), 'utf8')).toBe('remaining selected change\n')
+    expect((await git(root, 'log', '-2', '--format=%s')).trim().split(/\r?\n/)).toEqual(['selected after conflict', 'selected conflict'])
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: undefined, conflicts: 0 })
+  }, 20_000)
+
   it('shelves and unshelves one local changelist while restoring assignments', async () => {
     const root = await createRepository()
     const subject = service()

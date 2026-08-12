@@ -1221,6 +1221,22 @@ export default function App(): React.JSX.Element {
     }
   }, [appendLog, changelistState.changelists, deleteLocalChangelist, openNewChangelist, openSubmitForChangelist, performGitAt, refresh, repository])
 
+  const mergeSelectedCommits = useCallback(async (commits: CommitInfo[]): Promise<boolean> => {
+    if (!repository || !commits.length) return false
+    const ordered = [...commits].sort((left, right) => left.date.localeCompare(right.date))
+    const summary = ordered.slice(0, 8).map((commit) => `  ${commit.shortHash}  ${commit.subject}`).join('\n')
+    const remainder = ordered.length > 8 ? `\n  ...and ${ordered.length - 8} more` : ''
+    if (!window.confirm(`Merge ${ordered.length} selected commit(s) into current branch ${repository.branch}?\n\nThey will be applied oldest-first as new commits (Git cherry-pick):\n${summary}${remainder}\n\nIf a conflict occurs, P4Git will open Resolve and Continue will resume the remaining commits.`)) return false
+    setBranchComparison(undefined)
+    return performGitAt(
+      repository.root,
+      'git-cherry-pick',
+      `cherry-pick ${ordered.map((commit) => commit.hash).join(' ')}`,
+      () => window.p4git.cherryPickCommits(repository.root, ordered.map((commit) => commit.hash)),
+      `Merged ${ordered.length} selected commit(s) into ${repository.branch}.`
+    )
+  }, [performGitAt, repository])
+
   const handleCommitContext = useCallback(async (commit: CommitInfo, selectedCommits: CommitInfo[] = [commit]) => {
     if (!repository) return
     setSelectedCommit(commit)
@@ -1239,9 +1255,7 @@ export default function App(): React.JSX.Element {
       if (selectedCommits.length === 1) await revertCommit(commit)
       else if (window.confirm(`Revert ${selectedCommits.length} selected commits?\n\nNew commits will be created; existing history is preserved.`)) await performGitAt(repository.root, 'git-revert-commit', `revert --no-edit ${selectedCommits.map((item) => item.hash).join(' ')}`, () => window.p4git.revertCommits(repository.root, selectedCommits.map((item) => item.hash)), `Reverted ${selectedCommits.length} commits.`)
     } else if (action === 'git-cherry-pick') {
-      if (window.confirm(`Cherry-pick ${commit.shortHash} onto the current branch?\n\nIf conflicts occur, use Tools > Git > Abort Operation or resolve them before continuing.`)) {
-        await performGitAt(repository.root, 'git-cherry-pick', `cherry-pick ${commit.hash}`, () => window.p4git.cherryPick(repository.root, commit.hash), `Cherry-picked ${commit.shortHash}.`)
-      }
+      await mergeSelectedCommits(selectedCommits)
     } else if (action === 'git-branch-from-commit') {
       await createBranchFromRef(commit.hash)
     } else if (action === 'git-tag') {
@@ -1253,7 +1267,7 @@ export default function App(): React.JSX.Element {
         : window.confirm(`${mode === 'soft' ? 'Soft' : 'Mixed'} reset the current branch to ${commit.shortHash}?\n\n${mode === 'soft' ? 'Index and files will be kept.' : 'Working files will be kept, but the index will be reset.'}`)
       if (accepted) await performGitAt(repository.root, `git-reset-${mode}`, `reset --${mode} ${commit.hash}`, () => window.p4git.reset(repository.root, commit.hash, mode), `Reset current branch to ${commit.shortHash} (${mode}).`)
     }
-  }, [copyText, createBranchFromRef, createTagAt, performGitAt, repository, revertCommit])
+  }, [copyText, createBranchFromRef, createTagAt, mergeSelectedCommits, performGitAt, repository, revertCommit])
 
   const handleBranchContext = useCallback(async (branch: BranchInfo) => {
     if (!repository) return
@@ -1334,7 +1348,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.4.1\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.5.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1667,7 +1681,7 @@ export default function App(): React.JSX.Element {
       {remotesOpen && <RemotesDialog repoPath={repository.root} onClose={() => setRemotesOpen(false)} />}
       {pushOpen && <PushDialog repoPath={repository.root} branch={repository.branch} onClose={() => setPushOpen(false)} onPushed={async () => { setPushOpen(false); await refresh() }} />}
       {shelvesOpen && <ShelvesDialog repoPath={repository.root} shelves={changelistState.shelves} onClose={() => setShelvesOpen(false)} onUnshelved={async (state) => { setChangelistState(state); setShelvesOpen(false); await refresh() }} />}
-      {branchComparison && <BranchComparisonDialog value={branchComparison} onClose={() => setBranchComparison(undefined)} />}
+      {branchComparison && <BranchComparisonDialog value={branchComparison} onClose={() => setBranchComparison(undefined)} onMerge={(commits) => mergeSelectedCommits(commits)} />}
       {revisionRequest && <GetRevisionDialog repoPath={repository.root} paths={revisionRequest.paths} initial={revisionRequest.initial} suggestions={[repository.branch, repository.upstream ?? '', 'HEAD', ...branches.map((branch) => branch.name), ...history.slice(0, 30).map((commit) => commit.hash)].filter(Boolean)} onClose={() => setRevisionRequest(undefined)} onApply={async (revision, paths) => { await perform('get-revision', `git restore --source=${revision.hash} --worktree -- ${paths.join(' ')}`, () => window.p4git.restoreFromRef(repository.root, revision.hash, paths), `Restored ${paths.length} target(s) from ${revision.shortHash}.`) }} />}
       {lfsOpen && <LfsLocksDialog repoPath={repository.root} onClose={() => setLfsOpen(false)} />}
       {taskCenterOpen && <TaskCenter tasks={tasks} onClose={() => setTaskCenterOpen(false)} onCancel={() => void window.p4git.cancelOperations().then((count) => appendLog(`Cancellation requested for ${count} process(es).`, 'success'))} onClear={() => setTasks((current) => current.filter((task) => task.state === 'running'))} />}
@@ -1724,6 +1738,7 @@ function useTableSelection(keys: string[]): {
   click: (key: string, event: React.MouseEvent) => void
   context: (key: string) => Set<string>
   keyDown: (event: React.KeyboardEvent) => void
+  selectAll: () => void
 } {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const anchor = useRef<string | undefined>(undefined)
@@ -1743,7 +1758,8 @@ function useTableSelection(keys: string[]): {
       setSelected(next)
     },
     context: (key) => { const next = selected.has(key) ? selected : new Set([key]); if (!selected.has(key)) setSelected(next); anchor.current = key; return next },
-    keyDown: (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(new Set(keys)) } else if (event.key === 'Escape') setSelected(new Set()) }
+    keyDown: (event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(new Set(keys)) } else if (event.key === 'Escape') setSelected(new Set()) },
+    selectAll: () => setSelected(new Set(keys))
   }
 }
 
@@ -2199,9 +2215,11 @@ function ShelvesDialog({ repoPath, shelves, onClose, onUnshelved }: { repoPath: 
   return <div className="modal-backdrop"><section className="git-list-dialog"><div className="modal-title"><FileText size={16} /><strong>Local Shelves</strong><button onClick={onClose}><X size={16} /></button></div><div className="shelves-list">{shelves.map((shelf) => <div key={shelf.hash}><strong>{shelf.name}</strong><span>{shelf.description || `${shelf.paths.length} files`}</span><time>{formatDate(shelf.createdAt)}</time><button disabled={busy} onClick={async () => { if (!window.confirm(`Unshelve ${shelf.name} into the current workspace?`)) return; setBusy(true); try { await onUnshelved(await window.p4git.unshelve(repoPath, shelf.hash)) } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }}>Unshelve</button></div>)}{!shelves.length && <EmptyTable text="No local shelves. Right-click a changelist to Shelve it." />}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
 }
 
-function BranchComparisonDialog({ value, onClose }: { value: BranchComparison; onClose: () => void }): React.JSX.Element {
-  const commits = (title: string, rows: CommitInfo[]): React.JSX.Element => <section><strong>{title} ({rows.length})</strong>{rows.map((commit) => <div key={commit.hash}><code>{commit.shortHash}</code><span>{commit.subject}</span><em>{commit.author}</em></div>)}{!rows.length && <p>No commits.</p>}</section>
-  return <div className="modal-backdrop"><section className="compare-dialog"><div className="modal-title"><GitGraph size={16} /><strong>{value.current} ↔ {value.selected}</strong><button onClick={onClose}><X size={16} /></button></div><div className="compare-columns">{commits(`Incoming from ${value.selected}`, value.incoming)}{commits(`Outgoing from ${value.current}`, value.outgoing)}</div><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+function BranchComparisonDialog({ value, onClose, onMerge }: { value: BranchComparison; onClose: () => void; onMerge: (commits: CommitInfo[]) => Promise<boolean> }): React.JSX.Element {
+  const selection = useTableSelection(value.incoming.map((commit) => commit.hash))
+  const [busy, setBusy] = useState(false)
+  const selected = value.incoming.filter((commit) => selection.selected.has(commit.hash))
+  return <div className="modal-backdrop"><section className="compare-dialog"><div className="modal-title"><GitGraph size={16} /><strong>Selective Merge: {value.selected} → {value.current}</strong><button onClick={onClose}><X size={16} /></button></div><div className="compare-help"><span>Select commits from the other branch with Ctrl, Shift, or Ctrl+A. They will be applied to <strong>{value.current}</strong> oldest-first.</span><button onClick={selection.selectAll} disabled={!value.incoming.length}>Select All Incoming</button></div><div className="compare-columns"><section className="incoming-commits" tabIndex={0} onKeyDown={selection.keyDown}><strong>Available from {value.selected} ({value.incoming.length})</strong>{value.incoming.map((commit) => <button type="button" className={`compare-commit ${selection.selected.has(commit.hash) ? 'selected' : ''}`} key={commit.hash} onClick={(event) => selection.click(commit.hash, event)}><input type="checkbox" tabIndex={-1} readOnly checked={selection.selected.has(commit.hash)} /><code>{commit.shortHash}</code><span title={commit.subject}>{commit.subject}</span><em title={commit.author}>{commit.author}</em></button>)}{!value.incoming.length && <p>No commits from this branch are missing from the current branch.</p>}</section><section><strong>Already unique to {value.current} ({value.outgoing.length})</strong>{value.outgoing.map((commit) => <div key={commit.hash}><code>{commit.shortHash}</code><span title={commit.subject}>{commit.subject}</span><em title={commit.author}>{commit.author}</em></div>)}{!value.outgoing.length && <p>No outgoing commits.</p>}</section></div><div className="modal-actions"><span>{selected.length} commit(s) selected</span><span className="grow" /><button onClick={onClose} disabled={busy}>Close</button><button className="primary-classic" disabled={!selected.length || busy} onClick={async () => { setBusy(true); try { await onMerge(selected) } finally { setBusy(false) } }}>{busy && <LoaderCircle className="spin" size={14} />}Merge Selected into {value.current}</button></div></section></div>
 }
 
 function GitLabDialog({ repoPath, branch, branches, config, overview, onClose, onUpdate }: { repoPath: string; branch: string; branches: BranchInfo[]; config: GitLabConfig; overview?: GitLabOverview; onClose: () => void; onUpdate: (config: GitLabConfig, overview?: GitLabOverview) => void }): React.JSX.Element {

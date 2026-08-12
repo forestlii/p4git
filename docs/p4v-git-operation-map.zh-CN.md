@@ -24,6 +24,7 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | 外部 Diff 工具 | 用户配置可执行程序和参数模板；提供 Beyond Compare 默认值与内置回退 | 文件 Diff 已实现 |
 | Time-lapse View | `git blame` 逐行作者、提交和时间 | 已实现，简化版 |
 | Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，并在同一视图列出本地/远程分支 | 已实现 |
+| 从其他分支选择变更 | 多选其他分支独有提交并 cherry-pick 到当前分支；Resolve 与 Continue 会保留剩余队列 | 已实现；Merge commit 仍需单独指定 mainline |
 | Resolve | 读取 Git index 的 Base/Ours/Theirs 三个 stage，支持选边、手工合并和 Continue | 已实现 |
 | Pending changelist | Ready 映射为 Git index；本地持久化的多个命名列表用于整理未暂存改动 | 已实现，本地语义 |
 | Shelve / Unshelve | Changelist 映射为带 P4Git 元数据的本地 Git stash，恢复时还原文件归组 | 已实现，本地语义 |
