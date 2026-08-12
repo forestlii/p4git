@@ -255,6 +255,9 @@ describe('GitService Git-native operations', () => {
     await git(root, 'commit', '-m', 'selected second')
     const second = (await git(root, 'rev-parse', 'HEAD')).trim()
     await git(root, 'switch', 'main')
+    await writeFile(join(root, 'main-only.txt'), 'make the cherry-pick parent deterministic\n', 'utf8')
+    await git(root, 'add', 'main-only.txt')
+    await git(root, 'commit', '-m', 'main-only parent')
 
     await subject.cherryPickCommits(root, [second, first])
 
