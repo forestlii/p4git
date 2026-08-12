@@ -129,7 +129,7 @@ Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会
 
 ## 多选、布局、任务与 LFS 锁
 
-Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。在 Depot 或 Workspace 选中文件/文件夹会刷新对应的 History 与 Submitted 数据，但不会改变右侧当前页签。Pending Changelist 文件右键提供 **Show in Explorer**；文件已删除时打开原目录。当前页签 Filter 支持 **Contains**、**Starts with**、正则表达式和区分大小写，可匹配可见名称、路径、状态、作者、说明、哈希和 ref；无效正则会明确报错。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
+Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。在 Depot 或 Workspace 选中文件/文件夹会显示持续选中态并刷新对应的 History 与 Submitted 数据，但不会改变右侧当前页签。Pending Changelist 文件右键提供 **Show in Depot Tree**、**Show in Workspace Tree** 和 **Show in Explorer**；树定位会逐级展开父目录、选中目标并滚动到可见位置，文件已删除时资源管理器打开原目录。当前页签 Filter 支持 **Contains**、**Starts with**、正则表达式和区分大小写，可匹配可见名称、路径、状态、作者、说明、哈希和 ref；无效正则会明确报错。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。所有模态次级界面都可拖动标题栏改变位置，双击标题栏恢复居中。
 
 Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态。Fetch 开始后，底部会立即显示旋转状态和不确定进度线，慢速远端不再像“点击无反应”；已有 Fetch 运行时会阻止重复启动。**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
 
@@ -144,7 +144,7 @@ P4Git 按 P4V 的对象上下文策略提供原生右键菜单：树、文件表
 - **Tools > Git**：Stash Changes、Pop Latest Stash、View Stashes、View Reflog、Merge、Rebase、Create Tag，以及 Abort Merge/Rebase/Cherry-pick。
 - **Workspace / Pending 文件**：Stage、Unstage 和仅 Stash 所选文件或目录。
 - **Submitted 提交**：Cherry-pick、从提交新建分支、创建轻量 Tag，以及 Soft/Mixed/Hard Reset。
-- **分支**：Merge 到当前分支、把当前分支 Rebase 到所选分支、创建 Tag 和安全删除已合并的本地分支。
+- **分支**：Merge 到当前分支、把当前分支 Rebase 到所选分支、创建 Tag 和安全删除已合并的本地分支。远程分支的 **Work in this Stream** 会切换到已有跟踪分支，或自动建立本地跟踪分支后切换。
 - **Workspaces**：对指定仓库执行 Fetch、Pull、Push、Stash，并查看 Stashes 或 Reflog。
 
 Merge、Rebase 和 Cherry-pick 发生冲突时，Git 会保留进行中的操作以便解决。可以在 **Tools > Git > Abort Operation** 中明确中止。Hard Reset 和 Drop Stash 需要输入确认词；P4Git 不会静默执行这些不可逆操作。

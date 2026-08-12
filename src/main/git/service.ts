@@ -1009,11 +1009,11 @@ export class GitService {
     return join(root, this.safeRelativePath(root, filePath))
   }
 
-  async checkout(repoPath: string, branch: string, create = false, startPoint?: string): Promise<void> {
+  async checkout(repoPath: string, branch: string, create = false, startPoint?: string, track = false): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
     const trimmed = this.safeRef(branch)
     if (create) await this.run(root, ['check-ref-format', `refs/heads/${trimmed}`]).catch(() => { throw new Error(`分支名称无效：${trimmed}`) })
-    const args = create ? ['switch', '-c', trimmed] : ['switch', trimmed]
+    const args = create ? ['switch', ...(track ? ['--track'] : []), '-c', trimmed] : ['switch', trimmed]
     if (create && startPoint) {
       const source = this.safeRef(startPoint)
       await this.run(root, ['rev-parse', '--verify', `${source}^{commit}`]).catch(() => { throw new Error(`找不到起始分支或提交：${source}`) })

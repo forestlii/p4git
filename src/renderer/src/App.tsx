@@ -37,6 +37,7 @@ import { DEFAULT_APPEARANCE, DEFAULT_DIFF_TOOL_ARGUMENTS, DEFAULT_MERGE_TOOL_ARG
 import { filterError, filterQuery, makeFilterExpression, matchesFilter } from './filter'
 import type { FilterMode } from './filter'
 import { p4vEntryVisual } from './file-status'
+import { clampDialogTranslation } from './dialog-drag'
 import { characterSegments, parseUnifiedDiff } from './side-by-side-diff'
 import type { DiffCell } from './side-by-side-diff'
 import type {
@@ -255,7 +256,70 @@ function BrandIcon(): React.JSX.Element {
   return <span className="brand-icon">P4<span>G</span></span>
 }
 
+function useDraggableDialogs(): void {
+  useEffect(() => {
+    let cleanupDrag: (() => void) | undefined
+    const pointerDown = (event: PointerEvent): void => {
+      if (event.button !== 0) return
+      const target = event.target instanceof Element ? event.target : undefined
+      const title = target?.closest<HTMLElement>('.modal-title')
+      if (!title || target?.closest('button, input, select, textarea, a')) return
+      const dialog = title.parentElement
+      if (!dialog || !dialog.parentElement?.classList.contains('modal-backdrop')) return
+      event.preventDefault()
+      const start = { x: event.clientX, y: event.clientY }
+      const base = {
+        x: Number(dialog.dataset.dialogX ?? 0),
+        y: Number(dialog.dataset.dialogY ?? 0)
+      }
+      const rectangle = dialog.getBoundingClientRect()
+      const move = (pointer: PointerEvent): void => {
+        const next = clampDialogTranslation(
+          base,
+          { x: pointer.clientX - start.x, y: pointer.clientY - start.y },
+          rectangle,
+          { width: window.innerWidth, height: window.innerHeight }
+        )
+        dialog.dataset.dialogX = String(next.x)
+        dialog.dataset.dialogY = String(next.y)
+        dialog.style.transform = `translate(${next.x}px, ${next.y}px)`
+      }
+      const up = (): void => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+        document.body.classList.remove('dialog-dragging')
+        cleanupDrag = undefined
+      }
+      cleanupDrag?.()
+      cleanupDrag = up
+      document.body.classList.add('dialog-dragging')
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up, { once: true })
+      window.addEventListener('pointercancel', up, { once: true })
+    }
+    const resetPosition = (event: MouseEvent): void => {
+      const target = event.target instanceof Element ? event.target : undefined
+      const title = target?.closest<HTMLElement>('.modal-title')
+      if (!title || target?.closest('button, input, select, textarea, a')) return
+      const dialog = title.parentElement
+      if (!dialog || !dialog.parentElement?.classList.contains('modal-backdrop')) return
+      dialog.dataset.dialogX = '0'
+      dialog.dataset.dialogY = '0'
+      dialog.style.transform = ''
+    }
+    document.addEventListener('pointerdown', pointerDown)
+    document.addEventListener('dblclick', resetPosition)
+    return () => {
+      cleanupDrag?.()
+      document.removeEventListener('pointerdown', pointerDown)
+      document.removeEventListener('dblclick', resetPosition)
+    }
+  }, [])
+}
+
 export default function App(): React.JSX.Element {
+  useDraggableDialogs()
   const [health, setHealth] = useState<GitHealth>({ available: false })
   const [settings, setSettings] = useState<AppSettings>({ recentRepositories: [] })
   const [workspaceDraft, setWorkspaceDraft] = useState('')
@@ -622,12 +686,12 @@ export default function App(): React.JSX.Element {
     ])
   }, [loadChangelists, loadDirectory, loadSupplemental, loadTree])
 
-  const switchBranch = useCallback(async (branch: string, create = false, startPoint?: string) => {
+  const switchBranch = useCallback(async (branch: string, create = false, startPoint?: string, track = false) => {
     if (!repository) return false
-    const command = create ? `git switch -c ${branch}${startPoint ? ` ${startPoint}` : ''}` : `git switch ${branch}`
+    const command = create ? `git switch ${track ? '--track ' : ''}-c ${branch}${startPoint ? ` ${startPoint}` : ''}` : `git switch ${branch}`
     const success = create ? `Created and switched to ${branch}${startPoint ? ` from ${startPoint}` : ''}.` : `Switched to ${branch}.`
     return perform('checkout', command, async () => {
-      await window.p4git.checkout({ repoPath: repository.root, branch, create, startPoint })
+      await window.p4git.checkout({ repoPath: repository.root, branch, create, startPoint, track })
       await reloadAfterBranchSwitch(repository.root)
     }, success, false)
   }, [perform, reloadAfterBranchSwitch, repository])
@@ -782,10 +846,10 @@ export default function App(): React.JSX.Element {
     }
   }, [appendLog, depotRef, openMainTab, repository, treeMode])
 
-  const linkWorkspaceHistory = useCallback(async (entry: WorkspaceEntry) => {
+  const linkWorkspaceHistory = useCallback(async (entry: WorkspaceEntry, explicitSource?: TreeMode) => {
     if (!repository) return
     const request = workspaceHistoryRequest.current++
-    const source = treeMode
+    const source = explicitSource ?? treeMode
     const ref = source === 'depot' ? depotRef : 'HEAD'
     const change = source === 'workspace' ? repository.changes.find((item) => item.path === entry.path) : undefined
     setSelectedEntry(entry)
@@ -1328,14 +1392,22 @@ export default function App(): React.JSX.Element {
       ancestors.push(segments.slice(0, index + 1).join('/'))
     }
     setTreeMode(mode)
-    setExpandedPaths(new Set(ancestors))
+    setExpandedPaths((current) => new Set([...current, ...ancestors]))
     setCurrentDirectory(directory)
-    const rows = mode === 'depot'
-      ? await loadTree(repository.root, depotRef, directory)
-      : await loadDirectory(repository.root, directory)
-    setSelectedEntry(rows.find((row) => row.path === entry.path) ?? entry)
-    openMainTab('files')
-  }, [depotRef, loadDirectory, loadTree, openMainTab, repository])
+    let rows: WorkspaceEntry[] = []
+    for (const ancestor of ancestors) {
+      rows = mode === 'depot'
+        ? await loadTree(repository.root, depotRef, ancestor)
+        : await loadDirectory(repository.root, ancestor)
+    }
+    const selected = rows.find((row) => row.path === entry.path) ?? entry
+    void linkWorkspaceHistory(selected, mode)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const row = [...document.querySelectorAll<HTMLElement>('.workspace-tree .tree-row')]
+        .find((candidate) => candidate.dataset.treePath === entry.path)
+      row?.scrollIntoView({ block: 'nearest' })
+    }))
+  }, [depotRef, linkWorkspaceHistory, loadDirectory, loadTree, repository])
 
   const getEntryRevision = useCallback(async (entry: WorkspaceEntry, source: TreeMode) => {
     if (!repository) return
@@ -1345,7 +1417,7 @@ export default function App(): React.JSX.Element {
 
   const handleEntryContext = useCallback(async (entry: WorkspaceEntry, source: TreeMode, selectedEntries: WorkspaceEntry[] = [entry]) => {
     if (!repository) return
-    setSelectedEntry(entry)
+    void linkWorkspaceHistory(entry, source)
     const change = repository.changes.find((item) => item.path === entry.path)
     const selectedPaths = [...new Set(selectedEntries.map((item) => item.path).filter(Boolean))]
     const selectedChanges = repository.changes.filter((item) => selectedPaths.includes(item.path))
@@ -1418,7 +1490,7 @@ export default function App(): React.JSX.Element {
       case 'lfs-unlock': await changeLfsLocks(selectedPaths, false); break
       case 'lfs-locks': openLfsLocks(); break
     }
-  }, [changelistState.assignments, changelistState.changelists, changeLfsLocks, checkoutSelected, copyText, createBranchFromRef, depotRef, focusPath, getEntryRevision, getLatest, moveChangesToChangelist, openLfsLocks, openNewChangelist, perform, repository, revertPendingSelections, showDiff, showFileHistory, showPathDiff, showTimelapse, stashChanges])
+  }, [changelistState.assignments, changelistState.changelists, changeLfsLocks, checkoutSelected, copyText, createBranchFromRef, depotRef, focusPath, getEntryRevision, getLatest, linkWorkspaceHistory, moveChangesToChangelist, openLfsLocks, openNewChangelist, perform, repository, revertPendingSelections, showDiff, showFileHistory, showPathDiff, showTimelapse, stashChanges])
 
   const handlePendingContext = useCallback(async (change: FileChange, isStaged: boolean, changelistId: string | undefined, selections: PendingSelection[]) => {
     if (!repository) return
@@ -1431,6 +1503,7 @@ export default function App(): React.JSX.Element {
       staged: effectiveSelections.every((selection) => selection.staged),
       changed: true,
       untracked: change.kind === 'untracked',
+      tracked: effectiveSelections.every((selection) => selection.change.kind !== 'untracked' && selection.change.kind !== 'added'),
       changelists: changelistState.changelists.map(({ id, name }) => ({ id, name })),
       currentChangelistId: selectionLocations.size === 1 ? [...selectionLocations][0] : undefined,
       multiple: effectiveSelections.length > 1
@@ -1461,6 +1534,7 @@ export default function App(): React.JSX.Element {
       case 'diff': await showPendingDiffs(effectiveSelections); break
       case 'file-history': await showFileHistory(change.path); break
       case 'timelapse': await showTimelapse(change.path); break
+      case 'show-depot': await focusPath({ name: parts(change.path).name, path: change.path, isDirectory: false, tracked: true }, 'depot'); break
       case 'show-workspace': await focusPath({ name: parts(change.path).name, path: change.path, isDirectory: false, tracked: change.kind !== 'untracked' }, 'workspace'); break
       case 'show-explorer': await window.p4git.revealPath(repository.root, effectiveSelections[0]?.change.path ?? change.path); break
       case 'copy-path': await copyText(`${repository.root}\\${change.path.replaceAll('/', '\\')}`); break
@@ -1584,7 +1658,24 @@ export default function App(): React.JSX.Element {
     setSelectedBranch(branch)
     const action = await window.p4git.showContextMenu({ kind: 'branch', current: branch.current, remote: branch.remote })
     if (action === 'switch-branch') {
-      await switchBranch(branch.name)
+      if (!branch.remote) {
+        await switchBranch(branch.name)
+      } else {
+        const separator = branch.name.indexOf('/')
+        const preferred = separator >= 0 ? branch.name.slice(separator + 1) : branch.name
+        const matchingLocal = branches.find((candidate) => !candidate.remote && candidate.name === preferred && candidate.upstream === branch.name)
+        if (matchingLocal) {
+          await switchBranch(matchingLocal.name)
+        } else {
+          let localName = preferred
+          const remoteName = separator >= 0 ? branch.name.slice(0, separator) : 'remote'
+          if (branches.some((candidate) => !candidate.remote && candidate.name === localName)) localName = `${preferred}-${remoteName}`
+          let suffix = 2
+          const baseName = localName
+          while (branches.some((candidate) => !candidate.remote && candidate.name === localName)) localName = `${baseName}-${suffix++}`
+          await switchBranch(localName, true, branch.name, true)
+        }
+      }
     } else if (action === 'new-branch') {
       await createBranchFromRef(branch.name)
     } else if (action === 'copy-path') {
@@ -1605,7 +1696,7 @@ export default function App(): React.JSX.Element {
         await performGitAt(repository.root, 'git-delete-branch', `branch -d -- ${branch.name}`, () => window.p4git.deleteBranch(repository.root, branch.name), `Deleted branch ${branch.name}.`)
       }
     }
-  }, [copyText, createBranchFromRef, createTagAt, mergeRef, performGitAt, rebaseOnto, repository, switchBranch])
+  }, [branches, copyText, createBranchFromRef, createTagAt, mergeRef, performGitAt, rebaseOnto, repository, switchBranch])
 
   const amendLastCommit = useCallback(async () => {
     if (!repository || !history[0]) return
@@ -1665,7 +1756,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.10.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.11.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1745,6 +1836,9 @@ export default function App(): React.JSX.Element {
     setDepotEntriesByPath({})
     setCurrentDirectory('')
     setSelectedEntry(undefined)
+    setPendingSelection(undefined)
+    setSelectedCommit(undefined)
+    setFileHistoryView(undefined)
     setExpandedPaths(new Set(['']))
     await loadTree(repository.root, ref, '')
   }
@@ -2009,11 +2103,11 @@ export default function App(): React.JSX.Element {
           {treeFilterOpen && <div className="tree-filter"><input autoFocus value={treeFilter} onChange={(event) => setTreeFilter(event.target.value)} placeholder="Filter folders and files..." /><button onClick={() => setTreeFilter('')}><X size={13} /></button></div>}
           {treeMode === 'depot' ? <div className="workspace-selector depot-selector"><GitBranch size={16} /><strong>Committed tree</strong><select value={depotRef} onChange={(event) => void changeDepotRef(event.target.value)}>{[repository.upstream, 'HEAD', ...branches.map((branch) => branch.name)].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index).map((ref) => <option key={ref} value={ref}>{ref}</option>)}</select></div> : <div className="workspace-selector"><Monitor size={17} /><strong>{repository.name}</strong><select value={repository.root} onChange={(event) => void openRepository(event.target.value)}>{settings.recentRepositories.map((path) => <option value={path} key={path}>{path === repository.root ? `${repository.name} (${repository.branch})` : path}</option>)}</select></div>}
           <div className="tree-scroll">
-            <div className={`tree-row root ${currentDirectory === '' ? 'selected' : ''}`} onClick={() => void selectDirectory('')} onContextMenu={(event) => { event.preventDefault(); void handleEntryContext({ name: treeMode === 'depot' ? depotRef : repository.name, path: '', isDirectory: true, tracked: true }, treeMode) }}>
+            <div data-tree-path="" className={`tree-row root ${selectedEntry?.path === '' ? 'selected' : ''}`} onClick={() => void selectDirectory('')} onContextMenu={(event) => { event.preventDefault(); void handleEntryContext({ name: treeMode === 'depot' ? depotRef : repository.name, path: '', isDirectory: true, tracked: true }, treeMode) }}>
               <button onClick={(event) => { event.stopPropagation(); void toggleTreePath('') }}>{expandedPaths.has('') ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>
               {treeMode === 'depot' ? <GitBranch size={16} /> : <HardDrive size={16} />}<span>{treeMode === 'depot' ? `//${depotRef}` : repository.root}</span>
             </div>
-            {expandedPaths.has('') && <TreeChildren parent="" depth={1} source={treeMode} changes={repository.changes} locks={lfsStatus?.locks ?? []} entriesByPath={activeEntriesByPath} expanded={expandedPaths} currentDirectory={currentDirectory} onToggle={toggleTreePath} onSelectDirectory={selectDirectory} onSelectFile={(entry) => void linkWorkspaceHistory(entry)} onContext={(entry) => void handleEntryContext(entry, treeMode)} />}
+            {expandedPaths.has('') && <TreeChildren parent="" depth={1} source={treeMode} changes={repository.changes} locks={lfsStatus?.locks ?? []} entriesByPath={activeEntriesByPath} expanded={expandedPaths} selectedPath={selectedEntry?.path} onToggle={toggleTreePath} onSelectDirectory={selectDirectory} onSelectFile={(entry) => void linkWorkspaceHistory(entry)} onContext={(entry) => void handleEntryContext(entry, treeMode)} />}
           </div>
         </aside>
 
@@ -2183,7 +2277,7 @@ function useResizableColumns(id: string, defaults: number[]): { style: React.CSS
   return { style, grip }
 }
 
-function TreeChildren({ parent, depth, source, changes, locks, entriesByPath, expanded, currentDirectory, onToggle, onSelectDirectory, onSelectFile, onContext }: {
+function TreeChildren({ parent, depth, source, changes, locks, entriesByPath, expanded, selectedPath, onToggle, onSelectDirectory, onSelectFile, onContext }: {
   parent: string
   depth: number
   source: TreeMode
@@ -2191,19 +2285,19 @@ function TreeChildren({ parent, depth, source, changes, locks, entriesByPath, ex
   locks: LfsStatus['locks']
   entriesByPath: Record<string, WorkspaceEntry[]>
   expanded: Set<string>
-  currentDirectory: string
+  selectedPath?: string
   onToggle: (path: string) => Promise<void>
   onSelectDirectory: (path: string) => Promise<void>
   onSelectFile: (entry: WorkspaceEntry) => void
   onContext: (entry: WorkspaceEntry) => void
 }): React.JSX.Element {
   return <>{(entriesByPath[parent] ?? []).map((entry) => { const change = changes.find((item) => item.path === entry.path || item.oldPath === entry.path); const lock = locks.find((item) => item.path === entry.path); return <div key={entry.path}>
-    <div className={`tree-row ${currentDirectory === entry.path ? 'selected' : ''}`} style={{ paddingLeft: 5 + depth * 18 }} onDoubleClick={() => entry.isDirectory && void onToggle(entry.path)} onClick={() => entry.isDirectory ? void onSelectDirectory(entry.path) : onSelectFile(entry)} onContextMenu={(event) => { event.preventDefault(); onContext(entry) }}>
+    <div data-tree-path={entry.path} className={`tree-row ${selectedPath === entry.path ? 'selected' : ''}`} style={{ paddingLeft: 5 + depth * 18 }} onDoubleClick={() => entry.isDirectory && void onToggle(entry.path)} onClick={() => entry.isDirectory ? void onSelectDirectory(entry.path) : onSelectFile(entry)} onContextMenu={(event) => { event.preventDefault(); onContext(entry) }}>
       {entry.isDirectory ? <button onClick={(event) => { event.stopPropagation(); void onToggle(entry.path) }}>{expanded.has(entry.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button> : <span className="tree-indent" />}
       <P4VEntryIcon entry={entry} source={source} change={change} lock={lock} />
       <span>{entry.name}</span>
     </div>
-    {entry.isDirectory && expanded.has(entry.path) && <TreeChildren parent={entry.path} depth={depth + 1} source={source} changes={changes} locks={locks} entriesByPath={entriesByPath} expanded={expanded} currentDirectory={currentDirectory} onToggle={onToggle} onSelectDirectory={onSelectDirectory} onSelectFile={onSelectFile} onContext={onContext} />}
+    {entry.isDirectory && expanded.has(entry.path) && <TreeChildren parent={entry.path} depth={depth + 1} source={source} changes={changes} locks={locks} entriesByPath={entriesByPath} expanded={expanded} selectedPath={selectedPath} onToggle={onToggle} onSelectDirectory={onSelectDirectory} onSelectFile={onSelectFile} onContext={onContext} />}
   </div> })}</>
 }
 
@@ -2229,7 +2323,7 @@ function FilesTable({ entries, changes, locks, filter, selected, source, onSelec
   })
   const selection = useTableSelection(rows.map((entry) => entry.path))
   const columns = useResizableColumns('files', [300, 100, 110, 300])
-  return <div className="classic-table files-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable" style={columns.style}><button onClick={() => setSort('name')}>Name{columns.grip(0)}</button><button onClick={() => setSort('type')}>Type{columns.grip(1)}</button><button onClick={() => setSort('action')}>Action{columns.grip(2)}</button><button onClick={() => setSort('path')}>Path{columns.grip(3)}</button></div>{rows.map((entry) => { const metadata = describe(entry); const change = changes.find((item) => item.path === entry.path || item.oldPath === entry.path); const lock = locks.find((item) => item.path === entry.path); return <button style={columns.style} key={entry.path} className={`table-row ${selection.selected.has(entry.path) || (!selection.selected.size && selected === entry.path) ? 'selected' : ''}`} onClick={(event) => { selection.click(entry.path, event); onSelect(entry) }} onDoubleClick={() => onOpen(entry)} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(entry.path); onContext(entry, rows.filter((row) => keys.has(row.path))) }}><span className="file-name" title={p4vEntryVisual(entry, source, change, lock).tooltip}><P4VEntryIcon entry={entry} source={source} change={change} lock={lock} />{entry.name}</span><span>{metadata.type}</span><span>{metadata.action}</span><span title={entry.path}>{metadata.path}</span></button> })}{rows.length === 0 && <EmptyTable text="No files match the current filter." />}</div>
+  return <div className="classic-table files-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable" style={columns.style}><button onClick={() => setSort('name')}>Name{columns.grip(0)}</button><button onClick={() => setSort('type')}>Type{columns.grip(1)}</button><button onClick={() => setSort('action')}>Action{columns.grip(2)}</button><button onClick={() => setSort('path')}>Path{columns.grip(3)}</button></div>{rows.map((entry) => { const metadata = describe(entry); const change = changes.find((item) => item.path === entry.path || item.oldPath === entry.path); const lock = locks.find((item) => item.path === entry.path); return <button style={columns.style} key={entry.path} className={`table-row ${selection.selected.has(entry.path) || selected === entry.path ? 'selected' : ''}`} onClick={(event) => { selection.click(entry.path, event); onSelect(entry) }} onDoubleClick={() => onOpen(entry)} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(entry.path); onContext(entry, rows.filter((row) => keys.has(row.path))) }}><span className="file-name" title={p4vEntryVisual(entry, source, change, lock).tooltip}><P4VEntryIcon entry={entry} source={source} change={change} lock={lock} />{entry.name}</span><span>{metadata.type}</span><span>{metadata.action}</span><span title={entry.path}>{metadata.path}</span></button> })}{rows.length === 0 && <EmptyTable text="No files match the current filter." />}</div>
 }
 
 function PendingTable({ storageKey, staged, unstaged, changelists, assignments, filter, onSelect, onOpen, onStage, onMove, onContext, onNew, onGroupContext }: {

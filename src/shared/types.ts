@@ -527,6 +527,7 @@ export interface CheckoutRequest {
   branch: string
   create?: boolean
   startPoint?: string
+  track?: boolean
 }
 
 export interface P4GitApi {

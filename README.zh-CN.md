@@ -33,7 +33,9 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | 任务进度 | Fetch 时立即在底部显示运行状态，并可在任务中心查看或取消 Git 任务 |
 | GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
 | 导航 | Depot/Workspace 与 History/Submitted 联动、View 管理的可关闭页签、各页独立持久筛选、书签和可排序表头 |
+| 树定位 | Changelist 文件可定位到 Depot/Workspace 树并自动展开、选中和滚动；树选中持续驱动 History/Submitted |
 | 多窗口 | 启动时使用 P4V 风格 Workspace 选择器，各仓库窗口独立运行，并支持 Open in New Window |
+| 次级窗口 | 所有模态次级界面均可拖动，双击标题栏恢复居中 |
 | 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
 | Push / Remote | 管理 Remote，选择远端与目标分支，并在 Push 前预览提交 |
 | Git 发现 | 自动查找 Git for Windows，也可选择 UGit 等客户端自带的 `git.exe` |

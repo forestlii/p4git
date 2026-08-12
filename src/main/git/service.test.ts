@@ -584,9 +584,10 @@ describe('GitService Git-native operations', () => {
     await subject.pushTo(preview)
     expect((await git(remote, 'show-ref', '--heads', 'main')).trim()).toContain('refs/heads/main')
 
-    await subject.checkout(root, 'from-remote', true, 'team/main')
+    await subject.checkout(root, 'from-remote', true, 'team/main', true)
     expect((await git(root, 'branch', '--show-current')).trim()).toBe('from-remote')
     expect((await git(root, 'rev-parse', 'from-remote')).trim()).toBe((await git(root, 'rev-parse', 'team/main')).trim())
+    expect((await git(root, 'rev-parse', '--abbrev-ref', 'from-remote@{upstream}')).trim()).toBe('team/main')
     await subject.checkout(root, 'main')
     await subject.checkout(root, 'from-main', true, 'main')
     expect((await git(root, 'branch', '--show-current')).trim()).toBe('from-main')

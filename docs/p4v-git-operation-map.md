@@ -24,7 +24,7 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Diff | Working tree, index, Depot ref, and commit diffs in an aligned Beyond Compare-style side-by-side viewer | Implemented |
 | External Diff tool | Auto-discovered Beyond Compare 5/4 or a user-configured executable, with the built-in side-by-side fallback | Implemented for file diffs |
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
-| Revision Graph / Stream Graph | Multi-lane topology from commit parents, fuzzy ref filtering, a resizable branch pane, and local/remote branch operations | Implemented |
+| Revision Graph / Stream Graph | Multi-lane topology from commit parents, fuzzy ref filtering, a resizable branch pane, and Work in this Stream for local or remote branches | Implemented |
 | Select changes from another branch | Inspect commits/files, filter equivalent patches, then apply selected changes without committing into a new local Changelist; Resolve and Continue preserve the queue | Implemented; merge commits require a separate mainline workflow |
 | Resolve | Read Base/Ours/Theirs Git index stages, accept a side or edit a merge result, then Continue | Implemented |
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
@@ -36,7 +36,8 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | View filters | Multi-field Contains/Starts-with/Regex filters with case matching and validation | Implemented |
 | View-managed tabs | Closable main tabs restored through checked View-menu entries with persistent state | Implemented |
 | Workspaces | P4V-style startup chooser, recent local repositories, and independent multi-window opening | Implemented |
-| Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more | Implemented |
+| Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more; changelist files reveal in either tree | Implemented |
+| Draggable secondary dialogs | Drag any modal by its title bar and double-click to re-center | Implemented |
 | Log | Operation intent, success, and error output with a native Clear action | Implemented |
 
 ## P4V capabilities with no direct core-Git equivalent

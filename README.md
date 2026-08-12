@@ -33,7 +33,9 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Task progress | See immediate Fetch activity in the footer and inspect/cancel running Git work in the task center |
 | GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
 | Navigation | Depot/Workspace-linked History and Submitted views, closable View-managed tabs, persistent per-tab filters, bookmarks, and sortable columns |
+| Tree location | Changelist files can reveal, expand, select, and scroll into view in Depot/Workspace; tree selection continuously scopes History/Submitted |
 | Multi-window | P4V-style Workspace chooser on launch, independent repository windows, and Open in New Window |
+| Secondary dialogs | Every modal secondary dialog can be dragged; double-click its title bar to re-center it |
 | Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
 | Push / Remotes | Manage remotes, select a target ref, and preview outgoing commits before Push |
 | Git discovery | Detect Git for Windows or select the `git.exe` bundled with another client such as UGit |

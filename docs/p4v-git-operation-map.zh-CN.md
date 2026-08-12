@@ -24,7 +24,7 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Diff | 在 Beyond Compare 风格对齐双栏视图中显示 working tree、index、Depot ref 和 commit diff | 已实现 |
 | 外部 Diff 工具 | 自动发现 Beyond Compare 5/4 或使用用户配置的程序，并保留内置双栏回退 | 文件 Diff 已实现 |
 | Time-lapse View | `git blame` 逐行作者、提交和时间 | 已实现，简化版 |
-| Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，支持 ref 模糊筛选、分支栏调宽及本地/远程分支操作 | 已实现 |
+| Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，支持 ref 模糊筛选、分支栏调宽，以及从本地或远程分支 Work in this Stream | 已实现 |
 | 从其他分支选择变更 | 查看提交/文件、过滤等价补丁，再把所选改动不提交地放入新本地 Changelist；Resolve 与 Continue 保留剩余队列 | 已实现；Merge commit 仍需单独指定 mainline |
 | Resolve | 读取 Git index 的 Base/Ours/Theirs 三个 stage，支持选边、手工合并和 Continue | 已实现 |
 | Pending changelist | Ready 映射为 Git index；本地持久化的多个命名列表用于整理未暂存改动 | 已实现，本地语义 |
@@ -36,7 +36,8 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | 界面 Filter | 多字段 Contains/Starts with/正则筛选，支持大小写匹配和表达式校验 | 已实现 |
 | View 管理页签 | 主页签可关闭，由带勾选状态的 View 菜单恢复并持久保存状态 | 已实现 |
 | Workspaces | P4V 风格启动选择器、最近本地仓库和独立多窗口打开 | 已实现 |
-| 原生右键菜单 | 按 Workspace、Depot、Pending、Submitted、Branch 等对象显示适用操作 | 已实现 |
+| 原生右键菜单 | 按 Workspace、Depot、Pending、Submitted、Branch 等对象显示适用操作；Changelist 文件可双向定位树 | 已实现 |
+| 可拖动次级界面 | 拖动模态窗口标题栏，并可双击恢复居中 | 已实现 |
 | Log | 显示命令意图、成功或错误，可右键清空 | 已实现 |
 
 ## P4V 有、Git 核心没有直接等价物

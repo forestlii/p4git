@@ -1528,6 +1528,21 @@ textarea:focus-visible {
   background: linear-gradient(#fff, #e5e5e5);
 }
 
+.modal-title {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.modal-title > button,
+.modal-title input,
+.modal-title select,
+.modal-title textarea,
+.modal-title a { cursor: default; }
+
+body.dialog-dragging,
+body.dialog-dragging * { cursor: move !important; user-select: none !important; }
+
 .modal-title > button {
   display: grid;
   margin-left: auto;

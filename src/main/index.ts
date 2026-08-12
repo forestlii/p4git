@@ -274,6 +274,7 @@ function contextMenuTemplate(
         item('File History', 'file-history', !request.untracked),
         item('Time-lapse View', 'timelapse', !request.untracked),
         separator,
+        item('Show in Depot Tree', 'show-depot', Boolean(request.tracked)),
         item('Show in Workspace Tree', 'show-workspace'),
         item('Show in Explorer', 'show-explorer'),
         item('Copy Workspace Path', 'copy-path'),
@@ -330,7 +331,7 @@ function contextMenuTemplate(
       ]
     case 'branch':
       return [
-        item('Work in this Stream', 'switch-branch', !request.current && !request.remote),
+        item('Work in this Stream', 'switch-branch', !request.current),
         item('New Branch from Here...', 'new-branch'),
         separator,
         item('Copy Branch Name', 'copy-path'),
@@ -621,7 +622,7 @@ function registerIpc(): void {
     git.abort(repoPath, operation)
   )
   ipcMain.handle('git:checkout', (_event, request: CheckoutRequest) =>
-    git.checkout(request.repoPath, request.branch, request.create, request.startPoint)
+    git.checkout(request.repoPath, request.branch, request.create, request.startPoint, request.track)
   )
   ipcMain.handle('git:fetch', (_event, repoPath: string) => git.fetch(repoPath))
   ipcMain.handle('git:pull', (_event, repoPath: string) => git.pull(repoPath))
