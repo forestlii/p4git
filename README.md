@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.1-0c8b87)
 
 ## Highlights
 
@@ -98,7 +98,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.4.0** adds the enhanced Resolve workflow, Get Revision preview, task progress center, cross-table multi-selection, Git LFS Lock management, draggable persistent layout, resizable file columns, and appearance preferences. Partial-hunk staging and GitHub pull requests remain planned.
+Version **0.4.1** fixes **New Branch from Here** with a reliable in-app dialog, remote-branch name suggestions, and validated local/remote start points. It includes the 0.4.0 Resolve, Get Revision, tasks, multi-selection, LFS Lock, and customizable-layout features.
 
 ## License
 

@@ -996,6 +996,7 @@ textarea:focus-visible {
 .timelapse-dialog,
 .git-list-dialog,
 .changelist-dialog,
+.branch-dialog,
 .preferences-dialog,
 .connection-dialog,
 .conflict-dialog,
@@ -1157,6 +1158,13 @@ textarea:focus-visible {
 .changelist-dialog {
   width: min(560px, calc(100vw - 70px));
 }
+
+.branch-dialog { width: min(560px, calc(100vw - 70px)); }
+.branch-dialog .modal-body > input { width: 100%; height: 25px; border: 1px solid #888; padding: 3px 6px; background: white; }
+.branch-dialog .modal-body p { margin: 2px 0; color: #68747a; font-size: 11px; }
+.branch-dialog .modal-body .preference-error { color: #b42731; }
+.branch-source { display: flex; min-width: 0; height: 27px; align-items: center; gap: 7px; padding: 4px 7px; border: 1px solid #aaa; background: #eee; }
+.branch-source code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .preferences-dialog {
   width: min(720px, calc(100vw - 70px));
