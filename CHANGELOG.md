@@ -2,6 +2,20 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.6.1 — 2026-08-12
+
+### English
+
+- Pending now exposes **Diff Selected Files** when multiple rows are selected.
+- The built-in batch Diff window lists every selected file, loads comparisons independently, reports per-file failures, and supports Previous/Next navigation.
+- A configured external Diff tool is launched for every selected file instead of only the focused row.
+
+### 中文
+
+- Pending 多选后右键菜单显示 **Diff Selected Files**。
+- 内置批量 Diff 窗口列出全部选中文件，独立加载每个比较、显示单文件错误，并支持 Previous/Next 导航。
+- 配置外部 Diff 后会为每个选中文件启动比较，不再只处理焦点行。
+
 ## 0.6.0 — 2026-08-12
 
 ### English

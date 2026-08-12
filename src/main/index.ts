@@ -248,7 +248,7 @@ function contextMenuTemplate(
         moveChangelistMenu(),
         item('Revert...', 'revert'),
         separator,
-        item('Diff', 'diff'),
+        item(request.multiple ? 'Diff Selected Files' : 'Diff', 'diff'),
         item('File History', 'file-history', !request.untracked),
         item('Time-lapse View', 'timelapse', !request.untracked),
         separator,

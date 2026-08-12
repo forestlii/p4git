@@ -78,6 +78,18 @@ interface PendingSelection {
   changelistId?: string
 }
 
+interface PendingDiffItem extends PendingSelection {
+  key: string
+  content?: string
+  error?: string
+}
+
+interface PendingDiffView {
+  id: number
+  items: PendingDiffItem[]
+  activeKey: string
+}
+
 interface ChangelistEditorState {
   id?: string
   name: string
@@ -168,6 +180,18 @@ function revisionFileLabel(kind: string): string {
   return 'Modified'
 }
 
+function pendingExternalDiffRequest(repoPath: string, selection: PendingSelection): ExternalDiffRequest {
+  const { change, staged } = selection
+  return {
+    repoPath,
+    filePath: change.path,
+    left: staged ? { kind: 'git', ref: 'HEAD' } : change.kind === 'untracked' ? { kind: 'empty' } : change.staged ? { kind: 'index' } : { kind: 'git', ref: 'HEAD' },
+    right: staged ? { kind: 'index' } : { kind: 'workspace' },
+    leftTitle: staged ? 'HEAD' : change.kind === 'untracked' ? 'Empty' : change.staged ? 'Git index' : 'HEAD',
+    rightTitle: staged ? 'Git index' : 'Workspace'
+  }
+}
+
 function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
@@ -221,6 +245,7 @@ export default function App(): React.JSX.Element {
   const [currentDirectory, setCurrentDirectory] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<WorkspaceEntry>()
   const [pendingSelection, setPendingSelection] = useState<PendingSelection>()
+  const [pendingDiffView, setPendingDiffView] = useState<PendingDiffView>()
   const [selectedCommit, setSelectedCommit] = useState<CommitInfo>()
   const [selectedBranch, setSelectedBranch] = useState<BranchInfo>()
   const [changelistState, setChangelistState] = useState<ChangelistState>({ changelists: [], assignments: {}, shelves: [] })
@@ -263,6 +288,7 @@ export default function App(): React.JSX.Element {
   const [error, setError] = useState<string>()
   const filterRef = useRef<HTMLInputElement>(null)
   const logId = useRef(2)
+  const pendingDiffId = useRef(1)
   const initialized = useRef(false)
   const taskId = useRef(1)
 
@@ -519,16 +545,10 @@ export default function App(): React.JSX.Element {
 
   const showDiff = useCallback(async (change: FileChange, stagedVersion: boolean, changelistId?: string) => {
     if (!repository) return
-    setPendingSelection({ change, staged: stagedVersion, changelistId })
+    const selection = { change, staged: stagedVersion, changelistId }
+    setPendingSelection(selection)
     if (!change.conflicted) {
-      const launched = await launchConfiguredDiff({
-        repoPath: repository.root,
-        filePath: change.path,
-        left: stagedVersion ? { kind: 'git', ref: 'HEAD' } : change.kind === 'untracked' ? { kind: 'empty' } : change.staged ? { kind: 'index' } : { kind: 'git', ref: 'HEAD' },
-        right: stagedVersion ? { kind: 'index' } : { kind: 'workspace' },
-        leftTitle: stagedVersion ? 'HEAD' : change.kind === 'untracked' ? 'Empty' : change.staged ? 'Git index' : 'HEAD',
-        rightTitle: stagedVersion ? 'Git index' : 'Workspace'
-      })
+      const launched = await launchConfiguredDiff(pendingExternalDiffRequest(repository.root, selection))
       if (launched) return
     }
     setDetailTab('diff')
@@ -550,6 +570,54 @@ export default function App(): React.JSX.Element {
       setDiffLoading(false)
     }
   }, [launchConfiguredDiff, repository])
+
+  const showPendingDiffs = useCallback(async (selections: PendingSelection[]) => {
+    if (!repository) return
+    const unique = [...new Map(selections.map((selection) => [`${selection.staged ? 'index' : 'workspace'}\0${selection.change.path}`, selection])).entries()]
+      .map(([key, selection]) => ({ key, ...selection }))
+    if (unique.length <= 1) {
+      const selection = unique[0]
+      if (selection) await showDiff(selection.change, selection.staged, selection.changelistId)
+      return
+    }
+    setPendingSelection(unique[0])
+    let builtIn = unique
+    if (settings.diffToolPath) {
+      const fallback: typeof unique = []
+      for (const selection of unique) {
+        if (selection.change.conflicted || !await launchConfiguredDiff(pendingExternalDiffRequest(repository.root, selection))) fallback.push(selection)
+      }
+      if (!fallback.length) {
+        appendLog(`Opened ${unique.length} selected files in the configured external Diff tool.`, 'success')
+        return
+      }
+      builtIn = fallback
+    }
+    const id = pendingDiffId.current++
+    const items: PendingDiffItem[] = builtIn.map((selection) => ({ ...selection }))
+    setPendingDiffView({ id, items, activeKey: items[0].key })
+    appendLog(`Loading Diff for ${items.length} selected file(s).`)
+    await Promise.all(items.map(async (item) => {
+      try {
+        const content = await window.p4git.getDiff({
+          repoPath: repository.root,
+          filePath: item.change.path,
+          staged: item.staged,
+          untracked: item.change.kind === 'untracked'
+        })
+        setPendingDiffView((current) => current?.id === id ? {
+          ...current,
+          items: current.items.map((candidate) => candidate.key === item.key ? { ...candidate, content: content || 'No textual differences to display.' } : candidate)
+        } : current)
+      } catch (reason) {
+        const message = friendlyError(reason)
+        setPendingDiffView((current) => current?.id === id ? {
+          ...current,
+          items: current.items.map((candidate) => candidate.key === item.key ? { ...candidate, error: message } : candidate)
+        } : current)
+      }
+    }))
+  }, [appendLog, launchConfiguredDiff, repository, settings.diffToolPath, showDiff])
 
   const showPathDiff = useCallback(async (filePath: string, baseRef?: string) => {
     if (!repository) return
@@ -1218,7 +1286,7 @@ export default function App(): React.JSX.Element {
         if (window.confirm(`Revert ${paths.length} selected file(s)?\n\nTracked content is restored; never-added untracked files remain on disk.`)) await perform('revert', `git restore -- ${paths.join(' ')}`, () => window.p4git.revert(repository.root, paths), `Reverted ${paths.length} file(s).`)
         break
       }
-      case 'diff': await showDiff(change, isStaged, changelistId); break
+      case 'diff': await showPendingDiffs(effectiveSelections); break
       case 'file-history': await showFileHistory(change.path); break
       case 'timelapse': await showTimelapse(change.path); break
       case 'show-workspace': await focusPath({ name: parts(change.path).name, path: change.path, isDirectory: false, tracked: change.kind !== 'untracked' }, 'workspace'); break
@@ -1230,7 +1298,7 @@ export default function App(): React.JSX.Element {
       case 'lfs-unlock': await changeLfsLocks([...new Set(effectiveSelections.map((selection) => selection.change.path))], false); break
       case 'lfs-locks': openLfsLocks(); break
     }
-  }, [changelistState.changelists, changeLfsLocks, copyText, focusPath, moveChangesToChangelist, moveChangesToReady, openLfsLocks, openNewChangelist, openSubmitForChangelist, perform, repository, showDiff, showFileHistory, showTimelapse, stashChanges])
+  }, [changelistState.changelists, changeLfsLocks, copyText, focusPath, moveChangesToChangelist, moveChangesToReady, openLfsLocks, openNewChangelist, openSubmitForChangelist, perform, repository, showFileHistory, showPendingDiffs, showTimelapse, stashChanges])
 
   const handleChangelistContext = useCallback(async (id: string, name: string, rows: FileChange[]) => {
     if (!repository) return
@@ -1407,7 +1475,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.6.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.6.1\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1741,6 +1809,7 @@ export default function App(): React.JSX.Element {
       {pushOpen && <PushDialog repoPath={repository.root} branch={repository.branch} onClose={() => setPushOpen(false)} onPushed={async () => { setPushOpen(false); await refresh() }} />}
       {shelvesOpen && <ShelvesDialog repoPath={repository.root} shelves={changelistState.shelves} onClose={() => setShelvesOpen(false)} onUnshelved={async (state) => { setChangelistState(state); setShelvesOpen(false); await refresh() }} />}
       {branchComparison && <BranchComparisonDialog repoPath={repository.root} value={branchComparison} onClose={() => setBranchComparison(undefined)} onMerge={(commits) => openSelectiveMerge(commits, branchComparison.selected)} onDiff={diffCommitFileAgainstWorkspace} />}
+      {pendingDiffView && <PendingDiffDialog value={pendingDiffView} onChange={setPendingDiffView} onClose={() => setPendingDiffView(undefined)} />}
       {selectiveMergeEditor && <SelectiveMergeDialog value={selectiveMergeEditor} onChange={setSelectiveMergeEditor} onClose={() => setSelectiveMergeEditor(undefined)} onMerge={() => void runSelectiveMerge()} busy={busy === 'selective-merge'} currentBranch={repository.branch} />}
       {revisionRequest && <GetRevisionDialog repoPath={repository.root} paths={revisionRequest.paths} initial={revisionRequest.initial} suggestions={[repository.branch, repository.upstream ?? '', 'HEAD', ...branches.map((branch) => branch.name), ...history.slice(0, 30).map((commit) => commit.hash)].filter(Boolean)} onClose={() => setRevisionRequest(undefined)} onApply={async (revision, paths) => { await perform('get-revision', `git restore --source=${revision.hash} --worktree -- ${paths.join(' ')}`, () => window.p4git.restoreFromRef(repository.root, revision.hash, paths), `Restored ${paths.length} target(s) from ${revision.shortHash}.`) }} />}
       {lfsOpen && <LfsLocksDialog repoPath={repository.root} onClose={() => setLfsOpen(false)} />}
@@ -2347,6 +2416,17 @@ function CommitDetailsDialog({ value, onClose, onFileContext }: { value: CommitD
 
 function TextDiffDialog({ title, content, onClose }: { title: string; content: string; onClose: () => void }): React.JSX.Element {
   return <div className="modal-backdrop nested-modal"><section className="text-diff-dialog"><div className="modal-title"><FileDiff size={16} /><strong>{title}</strong><button onClick={onClose}><X size={16} /></button></div><pre>{content || 'No textual differences.'}</pre><div className="modal-actions"><button onClick={onClose}>Close</button></div></section></div>
+}
+
+function PendingDiffDialog({ value, onChange, onClose }: { value: PendingDiffView; onChange: (value: PendingDiffView) => void; onClose: () => void }): React.JSX.Element {
+  const activeIndex = Math.max(0, value.items.findIndex((item) => item.key === value.activeKey))
+  const active = value.items[activeIndex]
+  const loaded = value.items.filter((item) => item.content !== undefined || item.error !== undefined).length
+  const selectIndex = (index: number): void => {
+    const item = value.items[Math.max(0, Math.min(value.items.length - 1, index))]
+    if (item) onChange({ ...value, activeKey: item.key })
+  }
+  return <div className="modal-backdrop"><section className="pending-diff-dialog" role="dialog" aria-modal="true"><div className="modal-title"><FileDiff size={16} /><strong>Diff Selected Files ({value.items.length})</strong><span>{loaded}/{value.items.length} loaded</span><button onClick={onClose}><X size={16} /></button></div><div className="pending-diff-body"><aside><div className="pending-diff-head">Files</div>{value.items.map((item) => <button key={item.key} className={item.key === active?.key ? 'active' : ''} onClick={() => onChange({ ...value, activeKey: item.key })} title={item.change.path}><i className={`change-mark ${item.change.kind}`}>{changeCode(item.change)}</i><span>{item.change.path}</span><em>{item.staged ? 'HEAD ↔ Git index' : item.change.kind === 'untracked' ? 'Empty ↔ Workspace' : item.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</em>{item.error ? <AlertTriangle size={13} /> : item.content === undefined ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</button>)}</aside><section><header><strong title={active?.change.path}>{active?.change.path}</strong><span>{active?.staged ? 'HEAD ↔ Git index' : active?.change.kind === 'untracked' ? 'Empty ↔ Workspace' : active?.change.staged ? 'Git index ↔ Workspace' : 'HEAD ↔ Workspace'}</span></header><pre className={active?.error ? 'error' : ''}>{active?.error ?? active?.content ?? 'Loading diff...'}</pre></section></div><div className="modal-actions"><button onClick={() => selectIndex(activeIndex - 1)} disabled={activeIndex <= 0}>Previous File</button><button onClick={() => selectIndex(activeIndex + 1)} disabled={activeIndex >= value.items.length - 1}>Next File</button><span>{activeIndex + 1} of {value.items.length}</span><span className="grow" /><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function SelectiveMergeDialog({ value, onChange, onClose, onMerge, busy, currentBranch }: { value: SelectiveMergeEditorState; onChange: (value: SelectiveMergeEditorState) => void; onClose: () => void; onMerge: () => void; busy: boolean; currentBranch: string }): React.JSX.Element {

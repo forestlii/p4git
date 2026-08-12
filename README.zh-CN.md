@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.1-0c8b87)
 
 ## 核心能力
 
@@ -99,7 +99,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.6.0** 补齐选择性合并的审阅流程：Fetch 有明确运行反馈；Stream Graph 可拖动和模糊筛选；Compare 可查看提交详情、文件状态及与本地 Diff；选中提交会进入新建的本地 Changelist，不自动创建 Git commit。合并前还会识别当前分支已经包含的等价补丁。
+版本 **0.6.1** 新增 Pending 的 P4V 风格批量 Diff：多选文件后可在带文件列表和前后导航的内置窗口中查看全部比较；配置外部 Diff 后会处理全部选中文件。
 
 ## 协议
 

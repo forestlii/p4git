@@ -62,7 +62,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 - **Default changelist** 包含尚未归入命名列表的未暂存或未跟踪改动。
 - **命名 Changelist** 是按任务、功能或修复整理改动的本地持久分组，可以为空，也可以填写说明。
 
-通过 Pending 页的 **New Changelist...** 或 **Actions > New Changelist...** 创建列表。使用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Pending 文件，然后把它们拖到某个分组，或右键并使用 **Move to Changelist** 批量归组。该子菜单中的 **New Changelist...** 会创建新列表，并立即把全部选中文件移入其中。右键命名列表可提交、编辑、删除，或把其中全部文件移入 Ready。删除列表不会删除任何文件，其中的改动会回到 **Default changelist**。
+通过 Pending 页的 **New Changelist...** 或 **Actions > New Changelist...** 创建列表。使用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Pending 文件，然后把它们拖到某个分组，或右键并使用 **Move to Changelist** 批量归组。多选后的 **Diff Selected Files** 会比较全部选中文件：内置窗口提供接近 P4V 的文件列表以及 Previous/Next 导航；配置外部 Diff 后会把每个文件都交给外部工具，不再只处理焦点行。该子菜单中的 **New Changelist...** 会创建新列表，并立即把全部选中文件移入其中。右键命名列表可提交、编辑、删除，或把其中全部文件移入 Ready。删除列表不会删除任何文件，其中的改动会回到 **Default changelist**。
 
 命名列表的归属信息保存在当前仓库的 `.git/p4git/changelists.json` 中。它在应用重启后仍然存在，但只属于当前 clone，也不可能进入 Git commit；列表改名和说明同样保存在这里。
 

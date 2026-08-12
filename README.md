@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.1-0c8b87)
 
 ## Highlights
 
@@ -99,7 +99,7 @@ The Windows build produces an NSIS installer and a portable executable in `relea
 
 ## Status
 
-Version **0.6.0** completes the selective-merge review workflow: Fetch now shows activity, Stream Graph is resizable and filterable, Compare exposes commit/file details and local diffs, and selected commits are applied into a new local Changelist without creating a Git commit. Patch-equivalent commits already present on the current branch are identified before merging.
+Version **0.6.1** adds P4V-style batch Diff in Pending: multi-select files and open every comparison in a navigable built-in window, or send every selected file to the configured external Diff tool.
 
 ## License
 
