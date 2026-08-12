@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.3.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.0-0c8b87)
 
 ## 核心能力
 
@@ -25,7 +25,11 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
 | Submitted | 在 P4V 风格的已提交变更表格中浏览 Git 历史 |
 | Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；查看、新建和操作本地/远程分支 |
-| Resolve | 三栏查看 Base/Ours/Theirs，选择一方或编辑合并结果，并继续 Merge/Rebase/Cherry-pick |
+| Resolve | 逐个冲突块选择 Ours/Theirs/Both、编辑结果、整文件选边，或启动已配置的外部三方合并工具 |
+| Get Revision | 输入分支、Tag、哈希或日期，预览目标提交和文件后恢复一个或多个工作区路径 |
+| Git LFS 锁 | 查看、创建、批量解锁和强制解锁远端 Git LFS Lock |
+| 个性化工作区 | 拖动面板分隔线和文件列；选择经典/浅色/深色主题、密度、字号及工具栏文字 |
+| 任务进度 | 查看运行中/成功/失败的 Git 任务、完整命令，并取消正在运行的进程 |
 | GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
 | 导航 | 可编辑位置栏、历史、书签、Workspace 下拉、树排序/过滤和可排序表头 |
 | 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
@@ -94,7 +98,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.3.0** 补齐日常主流程：冲突自动进入 Resolve、Changelist Shelve/Unshelve、Remote 管理、Push 预览、分支 Incoming/Outgoing 与重命名，以及 Amend。按区块暂存、Git LFS 锁和 GitHub Pull Request 集成仍在规划中。
+版本 **0.4.0** 新增增强 Resolve、Get Revision 预览、任务进度中心、跨表格多选、Git LFS Lock 管理、可拖动并持久化的布局、可调文件列宽和外观设置。按区块暂存和 GitHub Pull Request 集成仍在规划中。
 
 ## 协议
 

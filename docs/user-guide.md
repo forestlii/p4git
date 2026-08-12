@@ -78,7 +78,7 @@ After confirmation, **Revert** restores both the index and working-tree content 
 
 ### External Diff tool
 
-Open **Tools > Preferences...** to configure Beyond Compare or another comparison executable. Browse to the program and edit the argument template if necessary. P4Git's Beyond Compare default is:
+Open **Tools > Preferences...** to configure Beyond Compare or another comparison executable. The same page configures a separate external 3-way Merge tool and the classic/light/dark theme, density, text scale, and toolbar labels. P4Git's Beyond Compare default is:
 
 ```text
 /solo /readonly /lefttitle={leftTitle} /righttitle={rightTitle} "{left}" "{right}"
@@ -109,7 +109,7 @@ The disclosure arrow expands a commit's changed files in place. Context actions 
 
 Select a file or folder in Depot or Workspace and choose **File History** from its context menu, or use **View > History** for the current selection. P4Git opens a persistent **History** tab linked to that path rather than a temporary dialog.
 
-The table lists Git revisions with an approximate file revision number, commit hash, date, author, and description. Select a revision to inspect its commit details in the lower pane. Double-click to diff it against its previous revision. The revision context menu also provides **Get This Revision**, **Diff Against Previous Revision**, **Diff Against Head**, **View Submitted Change**, and **Copy Commit Hash**. Getting a revision changes only the selected workspace path and asks for confirmation first.
+The table lists Git revisions with an approximate file revision number, commit hash, date, author, and description. Select a revision to inspect its commit details in the lower pane. Double-click to diff it against its previous revision. **Get This Revision** opens a preview that also accepts a branch, tag, full/short hash, or date. It shows the resolved commit and changed files before restoring the selected workspace paths.
 
 ## Stream Graph
 
@@ -117,9 +117,15 @@ The table lists Git revisions with an approximate file revision number, commit h
 
 ## Resolving conflicts
 
-Open **Tools > Git > Resolve Conflicts** for the three-way resolver. The selected file shows Base, Ours, Theirs, and an editable Result. Accept either side or save an edited result; after every file is resolved, **Continue Operation** resumes the Merge, Rebase, or Cherry-pick. Binary conflicts can select Ours or Theirs but cannot be edited as text. Abort actions remain under **Tools > Git**.
+Open **Tools > Git > Resolve Conflicts** for the three-way resolver. The selected file shows Base, Ours, Theirs, and the current workspace Result. Standard conflict blocks can be resolved one at a time with Ours, Theirs, or Both; the entire result remains editable. A configured external 3-way Merge tool can write the result directly. Binary conflicts use whole-file Ours/Theirs or the external tool. After every file is resolved, **Continue Operation** resumes the active operation.
 
 If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git opens Resolve automatically. The status bar shows the operation, conflict count, and when Continue is ready.
+
+## Selection, Layout, Tasks, and LFS Locks
+
+Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
+
+The **Tasks** button next to Log opens command history and running-process status. **Cancel Running** terminates active Git process trees. Open **Tools > Git > Git LFS Locks** or a file's **Git** context submenu to inspect, create, unlock, or force-unlock LFS locks. P4Git reports when Git LFS or remote locking is unavailable.
 
 ## Native Context Menus
 

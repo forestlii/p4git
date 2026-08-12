@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode } from '../shared/types'
+import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -11,6 +11,8 @@ const api: P4GitApi = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveDiffSettings: (executable?: string, argumentsTemplate?: string) =>
     ipcRenderer.invoke('settings:save-diff-tool', executable, argumentsTemplate),
+  savePreferences: (diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings) =>
+    ipcRenderer.invoke('settings:save-preferences', diffExecutable, diffArguments, mergeExecutable, mergeArguments, appearance),
   getGitHealth: () => ipcRenderer.invoke('git:health'),
   openRepository: (repoPath: string) => ipcRenderer.invoke('git:open', repoPath),
   getStatus: (repoPath: string) => ipcRenderer.invoke('git:status', repoPath),
@@ -44,6 +46,7 @@ const api: P4GitApi = {
   getConflicts: (repoPath: string) => ipcRenderer.invoke('git:conflicts', repoPath),
   resolveConflict: (repoPath: string, filePath: string, resolution: ConflictResolution, content?: string) =>
     ipcRenderer.invoke('git:resolve-conflict', repoPath, filePath, resolution, content),
+  launchExternalMerge: (repoPath: string, filePath: string) => ipcRenderer.invoke('git:external-merge', repoPath, filePath),
   continueOperation: (repoPath: string) => ipcRenderer.invoke('git:continue-operation', repoPath),
   revertCommits: (repoPath: string, refs: string[]) => ipcRenderer.invoke('git:revert-commits', repoPath, refs),
   markDelete: (repoPath: string, paths: string[]) =>
@@ -52,6 +55,10 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:revert', repoPath, paths),
   restoreFromRef: (repoPath: string, ref: string, paths: string[]) =>
     ipcRenderer.invoke('git:restore-from-ref', repoPath, ref, paths),
+  resolveRevision: (repoPath: string, input: string) => ipcRenderer.invoke('git:resolve-revision', repoPath, input),
+  getLfsStatus: (repoPath: string) => ipcRenderer.invoke('git:lfs-status', repoPath),
+  lockLfsFiles: (repoPath: string, paths: string[]) => ipcRenderer.invoke('git:lfs-lock', repoPath, paths),
+  unlockLfsFiles: (repoPath: string, paths: string[], force?: boolean) => ipcRenderer.invoke('git:lfs-unlock', repoPath, paths, force),
   getChangelists: (repoPath: string) => ipcRenderer.invoke('git:changelists', repoPath),
   createChangelist: (repoPath: string, name: string, description?: string) =>
     ipcRenderer.invoke('git:changelist-create', repoPath, name, description),

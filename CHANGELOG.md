@@ -2,6 +2,26 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.4.0 — 2026-08-12
+
+### English
+
+- Enhanced Resolve with the live workspace result, per-conflict Ours/Theirs/Both choices, binary-safe whole-file choices, and configurable external 3-way merge.
+- Added a Get Revision dialog for branch, tag, hash, and date lookup with commit/file preview and multi-path restore.
+- Added a task progress center with command history, state, and process cancellation.
+- Extended Ctrl/Shift/Ctrl+A multi-selection across the main tables, with batch operations where applicable.
+- Added Git LFS Lock/Unlock context actions and a lock-management window.
+- Added draggable Workspace/Details/Log dividers, resizable Files/Pending columns, full-path tooltips, themes, density, text scale, and optional toolbar labels.
+
+### 中文
+
+- 增强 Resolve：显示工作区结果，支持逐冲突块选择 Ours/Theirs/Both、二进制整文件选边和外部三方合并。
+- 新增 Get Revision 窗口：按分支、Tag、哈希或日期定位，预览后恢复多个工作区路径。
+- 新增带命令记录、状态和取消功能的任务进度中心。
+- 主表格统一支持 Ctrl/Shift/Ctrl+A 多选，并在适用位置执行批量操作。
+- 新增 Git LFS Lock/Unlock 右键操作与锁管理窗口。
+- Workspace、Details、Log 分隔线可拖动；Files/Pending 列宽可调；新增完整路径提示、主题、密度、字号和工具栏文字开关。
+
 ## 0.3.0 — 2026-08-12
 
 ### English
