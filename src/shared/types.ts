@@ -36,6 +36,30 @@ export interface CommitInfo {
   date: string
   subject: string
   refs: string[]
+  /** True when this commit is not reachable from the configured upstream branch. */
+  localOnly?: boolean
+}
+
+export interface StrictSubmitRequest {
+  repoPath: string
+  message: string
+  paths: string[]
+}
+
+export interface StrictSubmitResult {
+  commit: string
+  shortHash: string
+  upstream: string
+  attempts: number
+  warning?: string
+}
+
+export interface SubmitMergeRequestTarget {
+  commit: string
+  shortHash: string
+  remote: string
+  sourceBranch: string
+  targetBranch: string
 }
 
 export interface BranchInfo {
@@ -140,6 +164,8 @@ export interface OperationState {
   canContinue: boolean
   canAbort: boolean
   changelistId?: string
+  submitPending?: boolean
+  submitCommit?: string
 }
 
 export interface ReflogEntry {
@@ -307,6 +333,7 @@ export type ContextMenuAction =
   | 'git-stash'
   | 'git-stashes'
   | 'git-reflog'
+  | 'git-commit-local'
   | 'new-changelist'
   | 'new-changelist-with-selection'
   | 'edit-changelist'
@@ -372,6 +399,7 @@ export type MenuAction =
   | 'git-remotes'
   | 'git-shelves'
   | 'git-amend'
+  | 'git-commit-local'
   | 'gitlab'
   | 'resolve-conflicts'
   | 'clone'
@@ -517,6 +545,10 @@ export interface P4GitApi {
   unstage(repoPath: string, paths: string[]): Promise<void>
   discard(repoPath: string, paths: string[]): Promise<void>
   commit(repoPath: string, message: string, amend?: boolean): Promise<string>
+  strictSubmit(request: StrictSubmitRequest): Promise<StrictSubmitResult>
+  resumeSubmit(repoPath: string): Promise<StrictSubmitResult>
+  prepareSubmitMergeRequest(repoPath: string): Promise<SubmitMergeRequestTarget>
+  completeSubmitMergeRequest(repoPath: string): Promise<string | undefined>
   getHistory(repoPath: string, limit?: number): Promise<CommitInfo[]>
   getBranches(repoPath: string): Promise<BranchInfo[]>
   listDirectory(repoPath: string, relativePath?: string): Promise<WorkspaceEntry[]>

@@ -22,7 +22,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
 | External Diff | Configure Beyond Compare or another executable; file comparisons use it automatically with a built-in fallback |
-| Submit | Use P4V-style Checkout/Add actions, review the Submit Changelist dialog, and create a Git commit |
+| Submit | P4V-strict delivery: Fetch, commit, Rebase/Resolve when needed, Push, and verify the exact server ref before reporting success |
 | Submitted | Browse path-linked commits; detail files compare against their previous revision or local Workspace |
 | Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |
 | Selective branch merge | Inspect commit details and changed files, then apply selected commits into a new local Changelist without creating a Git commit |

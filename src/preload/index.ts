@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest, ViewTab } from '../shared/types'
+import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest, StrictSubmitRequest, ViewTab } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -24,6 +24,10 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:discard', repoPath, paths),
   commit: (repoPath: string, message: string, amend?: boolean) =>
     ipcRenderer.invoke('git:commit', repoPath, message, amend),
+  strictSubmit: (request: StrictSubmitRequest) => ipcRenderer.invoke('git:strict-submit', request),
+  resumeSubmit: (repoPath: string) => ipcRenderer.invoke('git:resume-submit', repoPath),
+  prepareSubmitMergeRequest: (repoPath: string) => ipcRenderer.invoke('git:prepare-submit-mr', repoPath),
+  completeSubmitMergeRequest: (repoPath: string) => ipcRenderer.invoke('git:complete-submit-mr', repoPath),
   getHistory: (repoPath: string, limit?: number) =>
     ipcRenderer.invoke('git:history', repoPath, limit),
   getBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),

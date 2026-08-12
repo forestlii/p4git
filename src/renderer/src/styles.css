@@ -691,6 +691,9 @@ textarea:focus-visible {
   color: #59656b;
 }
 .submitted-files-inline > div { display: flex; min-height: 20px; align-items: center; gap: 7px; }
+.submitted-table .table-row.local-only { background: #fff5e8; }
+.submitted-table .table-row.local-only.selected { background: #c7e6f5; }
+.local-only-label { margin-left: 5px; border: 1px solid #c97620; border-radius: 2px; padding: 0 3px; color: #a45100; font-size: 9px; font-style: normal; }
 
 .history-layout {
   min-width: 760px;
@@ -1555,6 +1558,7 @@ textarea:focus-visible {
   display: flex;
   margin-top: 3px;
 }
+.submit-guarantee { display: flex; align-items: center; gap: 7px; border: 1px solid #7dab8b; padding: 7px 9px; background: #edf8f0; color: #285f39; }
 
 .submit-files-title span { margin-left: auto; }
 

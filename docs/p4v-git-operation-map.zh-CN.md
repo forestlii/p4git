@@ -29,7 +29,7 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Resolve | 读取 Git index 的 Base/Ours/Theirs 三个 stage，支持选边、手工合并和 Continue | 已实现 |
 | Pending changelist | Ready 映射为 Git index；本地持久化的多个命名列表用于整理未暂存改动 | 已实现，本地语义 |
 | Shelve / Unshelve | Changelist 映射为带 P4Git 元数据的本地 Git stash，恢复时还原文件归组 | 已实现，本地语义 |
-| Submit | 从 Git index 创建本地 commit，不自动 Push | 已实现 |
+| Submit | Fetch、commit、安全 Rebase/Resolve、Push 并验证服务器目标引用；被拒绝的提交明确标为 Local only 且可重试 | 已实现 |
 | Submitted | Git log；展开文件、P4V 风格提交详情、上一版本/本地文件 Diff、复制 hash，并用 `git revert` 撤销所选提交 | 已实现 |
 | Jobs | GitLab Issues | GitLab 项目已配置时实现 |
 | 文件/目录 History | Workspace 选择联动 History 与 Submitted，基于 Git log 支持恢复版本及与 Previous/HEAD 比较 | 已实现 |

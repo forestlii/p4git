@@ -22,7 +22,7 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
 | History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
 | 外部 Diff | 配置 Beyond Compare 或其他可执行程序；文件比较会自动优先使用，并保留内置回退 |
-| 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
+| 提交 | P4V 严格送达：Fetch、commit、必要时 Rebase/Resolve、Push，并验证服务器引用后才报告成功 |
 | Submitted | 按路径联动浏览提交；详情文件可与上一版本或本地 Workspace 比较 |
 | Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；分支栏可拖动调宽，并支持按名称模糊筛选 |
 | 选择性分支合并 | 查看提交详情、文件状态和本地 Diff，再把选中提交应用到新建本地 Changelist，不自动创建 Git commit |

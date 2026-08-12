@@ -33,7 +33,7 @@ P4Git keeps P4V action names while using Git underneath:
 | Diff | Compare the worktree, index, selected Depot ref, or a submitted commit |
 | Timelapse | Show per-line author, commit, and date using `git blame --line-porcelain` |
 | Revgraph | Open a multi-lane Revision/Stream Graph from commit parents and Git branches |
-| Submit | Create a local Git commit from Ready to submit |
+| Submit | Deliver Ready to submit to the tracked server branch and verify it |
 | Connection > Fetch | `git fetch --all --prune` |
 | Connection > Push | Push the current branch and create its upstream when needed |
 
@@ -95,11 +95,11 @@ Once configured, file-level Diff actions automatically use the external tool for
 1. Right-click a named or Default changelist and choose **Submit Changelist**. You can also submit **Ready to submit** from the toolbar or Actions menu.
 2. For a local list, P4Git prepares the Git index with only that list's files; changes in every other list remain in the working tree.
 3. Review the exact file list in the Submit Changelist window.
-4. Enter a non-empty description and select **Submit**. A named list's description is used as the initial commit message when the field is empty.
+4. Enter a non-empty description and select **Submit to Server**. A named list's description is used as the initial commit message when the field is empty.
 
-After a successful commit, assignments for committed paths are removed. The named changelist itself remains available for later work until you delete it.
+P4Git Fetches, creates the local commit, rebases onto a newer upstream when needed, Pushes without force, and verifies the exact remote branch hash. Only then does it report success and remove assignments for committed paths. The named changelist itself remains available for later work until you delete it.
 
-Conflicted files disable submission. The result is a local Git commit; it is not pushed automatically. Git hooks and repository commit policies still run because P4Git invokes the configured Git executable.
+If Rebase conflicts, Submit pauses in Resolve and Continue resumes the same server-delivery transaction. If networking, permissions, protected-branch rules, hooks, or server policy reject Push, the commit stays visibly **Local only** with **Retry Submit**; it is never reported as submitted. For a configured GitLab project, **Create GitLab MR** pushes a verified `p4git/*` source branch and creates a Merge Request to the original target; the UI explicitly says that the target is not submitted until the MR is merged. Other dirty changelists are protected in an internal stash while history is rebased and are restored afterward. Use **Tools > Git > Commit Locally** for an intentionally local-only commit. Git hooks and repository policies still run because P4Git invokes the configured Git executable.
 
 ## Submitted
 

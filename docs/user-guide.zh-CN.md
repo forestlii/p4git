@@ -33,7 +33,7 @@ P4Git 保留 P4V 的操作名称，底层执行 Git：
 | Diff | 对比工作区、索引、所选 Depot 分支或提交的文本差异 |
 | Timelapse | 用 `git blame --line-porcelain` 显示逐行作者、提交和时间 |
 | Revgraph | 打开以 commit parent 和 Git 分支绘制的多轨 Revision/Stream Graph |
-| Submit | 用 Ready to submit 创建本地 Git commit |
+| Submit | 将 Ready to submit 送达到跟踪的服务器分支并验证 |
 | Connection > Fetch | `git fetch --all --prune` |
 | Connection > Push | 推送当前分支；需要时自动创建 upstream |
 
@@ -95,11 +95,11 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 1. 右键命名或 Default changelist，选择 **Submit Changelist**；也可以从操作栏或 Actions 菜单提交 **Ready to submit**。
 2. 提交本地列表时，P4Git 会只把该列表中的文件准备到 Git 索引，其他列表的改动继续留在工作区。
 3. 在 Submit Changelist 窗口检查本次提交的准确文件列表。
-4. 输入非空说明并点击 **Submit**。如果说明框原本为空，命名列表的说明会自动作为初始 commit message。
+4. 输入非空说明并点击 **Submit to Server**。如果说明框原本为空，命名列表的说明会自动作为初始 commit message。
 
-提交成功后，已提交路径的列表归属会被清除；命名 Changelist 本身会保留，直到你主动删除，方便后续继续使用。
+P4Git 会 Fetch、创建本地 commit、需要时 Rebase 到新的 upstream、在不使用 Force Push 的情况下 Push，并核对远端分支的精确哈希。只有全部完成后才报告成功并清除已提交路径的列表归属；命名 Changelist 本身会保留，直到你主动删除。
 
-存在冲突文件时无法提交。操作结果是本地 Git commit，不会自动 Push。P4Git 调用配置的真实 Git，因此仓库 Hooks 和提交策略仍会执行。
+Rebase 冲突时，Submit 会暂停并进入 Resolve，Continue 将继续同一笔服务器送达事务。断网、权限、保护分支、Hook 或服务器策略拒绝 Push 时，提交会明确显示为 **Local only** 并提供 **Retry Submit**，绝不会误报为已提交。已配置 GitLab 项目时，**Create GitLab MR** 会推送并验证一个 `p4git/*` 来源分支，再向原目标创建 Merge Request；界面会明确提示目标分支只有在 MR 合并后才算提交。历史整理期间，其他未提交 Changelist 会放入内部 Stash 保护并在完成后恢复。确实只想创建本地 commit 时使用 **Tools > Git > Commit Locally**。P4Git 调用配置的真实 Git，因此仓库 Hooks 和提交策略仍会执行。
 
 ## Submitted
 

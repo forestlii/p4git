@@ -29,7 +29,7 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Resolve | Read Base/Ours/Theirs Git index stages, accept a side or edit a merge result, then Continue | Implemented |
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
 | Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |
-| Submit | Create a local commit from the Git index without automatic Push | Implemented |
+| Submit | Fetch, commit, safely Rebase/Resolve, Push, and verify the target server ref; rejected submissions remain visibly Local only and retryable | Implemented |
 | Submitted | Git log with expandable files, P4V-style commit details, previous/local file diffs, hash copy, and safe `git revert` | Implemented |
 | Jobs | GitLab Issues | Implemented when a GitLab project is configured |
 | File / folder History | Workspace-selection-linked History and Submitted views backed by Git log, revision restore, and Previous/HEAD diff | Implemented |

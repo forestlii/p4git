@@ -38,6 +38,9 @@ import type {
   RevisionResolution,
   SelectiveMergeRequest,
   SelectiveMergeResult,
+  StrictSubmitRequest,
+  StrictSubmitResult,
+  SubmitMergeRequestTarget,
   StashEntry,
   ShelfInfo,
   WorkspaceEntry
@@ -97,6 +100,19 @@ interface SelectiveMergeSession {
   refs: string[]
   nextIndex: number
   paths: string[]
+  createdAt: string
+}
+
+interface StrictSubmitSession {
+  version: 1
+  branch: string
+  remote: string
+  remoteBranch: string
+  upstream: string
+  commit: string
+  paths: string[]
+  attempts: number
+  stashHash?: string
   createdAt: string
 }
 
@@ -574,6 +590,79 @@ export class GitService {
     return this.run(root, ['commit', ...(amend ? ['--amend'] : []), '-m', trimmed])
   }
 
+  async strictSubmit(request: StrictSubmitRequest): Promise<StrictSubmitResult> {
+    const root = await this.repositoryRoot(request.repoPath)
+    if (await this.readStrictSubmitSession(root)) {
+      throw new Error('已有一个本地提交正在等待服务器接收。请使用 Retry Submit，不能再次创建提交。')
+    }
+    const operation = await this.operationState(root)
+    if (operation.operation || operation.conflicts) throw new Error('当前有未完成的 Git 操作或冲突，请先 Resolve 或 Abort。')
+    const message = request.message.trim()
+    if (!message) throw new Error('提交说明不能为空。')
+    const branch = (await this.run(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim()
+    if (!branch) throw new Error('Detached HEAD 不能执行 P4V 严格提交，请先切换到本地分支。')
+    const target = await this.strictSubmitTarget(root, branch)
+    await this.run(root, ['fetch', target.remote, '--prune'])
+    await this.run(root, ['commit', '-m', message])
+    const commit = (await this.run(root, ['rev-parse', 'HEAD'])).trim()
+    const session: StrictSubmitSession = {
+      version: 1,
+      branch,
+      ...target,
+      commit,
+      paths: [...new Set(request.paths.map((item) => this.safeRelativePath(root, item)))],
+      attempts: 0,
+      createdAt: new Date().toISOString()
+    }
+    await this.writeStrictSubmitSession(root, session)
+    try {
+      return await this.finishStrictSubmit(root, session)
+    } catch (error) {
+      throw new Error(`本地提交 ${commit.slice(0, 10)} 已创建，但服务器尚未确认接收。请 Resolve 后 Continue，或使用 Retry Submit。\n\n${asErrorMessage(error)}`)
+    }
+  }
+
+  async resumeSubmit(repoPath: string): Promise<StrictSubmitResult> {
+    const root = await this.repositoryRoot(repoPath)
+    const session = await this.readStrictSubmitSession(root)
+    if (!session) throw new Error('当前没有等待上传服务器的本地提交。')
+    const operation = await this.operationState(root)
+    if (operation.operation || operation.conflicts) throw new Error('提交正在等待 Resolve。请解决冲突并点击 Continue Operation。')
+    session.attempts = 0
+    await this.writeStrictSubmitSession(root, session)
+    try {
+      return await this.finishStrictSubmit(root, session)
+    } catch (error) {
+      throw new Error(`本地提交 ${session.commit.slice(0, 10)} 仍未被服务器确认。\n\n${asErrorMessage(error)}`)
+    }
+  }
+
+  async prepareSubmitMergeRequest(repoPath: string): Promise<SubmitMergeRequestTarget> {
+    const root = await this.repositoryRoot(repoPath)
+    const session = await this.readStrictSubmitSession(root)
+    if (!session) throw new Error('当前没有等待服务器接收的提交。')
+    const operation = await this.operationState(root)
+    if (operation.operation || operation.conflicts) throw new Error('请先完成 Resolve，才能创建 Merge Request。')
+    const safeBranch = session.branch.replace(/[^A-Za-z0-9._/-]+/g, '-').replace(/^[-/.]+|[-/.]+$/g, '') || 'submit'
+    const sourceBranch = this.safeRef(`p4git/${safeBranch}/${session.commit.slice(0, 10)}`)
+    await this.run(root, ['push', session.remote, `HEAD:refs/heads/${sourceBranch}`])
+    const head = (await this.run(root, ['rev-parse', 'HEAD'])).trim()
+    const advertised = (await this.run(root, ['ls-remote', '--heads', session.remote, `refs/heads/${sourceBranch}`])).trim().split(/\s+/)[0] ?? ''
+    if (advertised !== head) throw new Error('备用分支 Push 后未通过服务器哈希验证，未创建 Merge Request。')
+    return { commit: head, shortHash: head.slice(0, 10), remote: session.remote, sourceBranch, targetBranch: session.remoteBranch }
+  }
+
+  async completeSubmitMergeRequest(repoPath: string): Promise<string | undefined> {
+    const root = await this.repositoryRoot(repoPath)
+    const session = await this.readStrictSubmitSession(root)
+    if (!session) throw new Error('当前没有等待完成的 Merge Request 提交流程。')
+    const warning = await this.restoreStrictSubmitWorkspace(root, session)
+    const state = await this.readChangelists(root)
+    for (const path of session.paths) delete state.assignments[path]
+    await Promise.all([this.writeChangelists(root, state), this.removeStrictSubmitSession(root)])
+    return warning
+  }
+
   async history(repoPath: string, limit = 100): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
     if (!await this.hasHead(root)) return []
@@ -587,7 +676,7 @@ export class GitService {
       if (error instanceof Error && error.message.includes('does not have any commits')) return ''
       throw error
     })
-    return parseLog(output)
+    return this.markLocalOnly(root, parseLog(output))
   }
 
   async fileHistory(repoPath: string, filePath: string, limit = 100): Promise<CommitInfo[]> {
@@ -605,7 +694,7 @@ export class GitService {
       : await this.run(root, ['log', '--follow', ...formatArgs, '--', safePath]).catch(() =>
           this.run(root, ['log', ...formatArgs, '--', safePath])
         )
-    return parseLog(output)
+    return this.markLocalOnly(root, parseLog(output))
   }
 
   async fileRevisionDiff(repoPath: string, filePath: string, ref: string, compareRef?: string): Promise<string> {
@@ -804,7 +893,13 @@ export class GitService {
         : `选择性合并完成；${result.paths.length} 个文件已放入 Changelist ${result.changelist.name}。`
     }
     if (await gitPath('rebase-merge') || await gitPath('rebase-apply')) {
-      return this.run(root, ['-c', 'core.editor=true', 'rebase', '--continue'])
+      const output = await this.run(root, ['-c', 'core.editor=true', 'rebase', '--continue'])
+      const pendingSubmit = await this.readStrictSubmitSession(root)
+      if (pendingSubmit && !await gitPath('rebase-merge') && !await gitPath('rebase-apply')) {
+        const result = await this.finishStrictSubmit(root, pendingSubmit)
+        return `服务器已确认提交 ${result.shortHash} 到 ${result.upstream}。${result.warning ? ` ${result.warning}` : ''}`
+      }
+      return output
     }
     if (await gitPath('CHERRY_PICK_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'cherry-pick', '--continue'])
     if (await gitPath('REVERT_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'revert', '--continue'])
@@ -1040,8 +1135,9 @@ export class GitService {
     else if (await exists('CHERRY_PICK_HEAD')) operation = 'cherry-pick'
     else if (await exists('REVERT_HEAD')) operation = 'revert'
     else if (await exists('MERGE_HEAD')) operation = 'merge'
+    const pendingSubmit = await this.readStrictSubmitSession(root)
     const conflicts = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z'])).split('\0').filter(Boolean).length
-    return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation), changelistId: selective?.changelistId }
+    return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation), changelistId: selective?.changelistId, submitPending: Boolean(pendingSubmit), submitCommit: pendingSubmit?.commit }
   }
 
   async cancelOperations(): Promise<number> {
@@ -1085,6 +1181,123 @@ export class GitService {
     await this.runRaw(gitPath, ['init', '-b', branch, directory], directory)
     await this.settings.rememberRepository(directory)
     return directory
+  }
+
+  private async strictSubmitTarget(root: string, branch: string): Promise<Pick<StrictSubmitSession, 'remote' | 'remoteBranch' | 'upstream'>> {
+    const configuredRemote = (await this.run(root, ['config', '--get', `branch.${branch}.remote`]).catch(() => '')).trim()
+    const configuredMerge = (await this.run(root, ['config', '--get', `branch.${branch}.merge`]).catch(() => '')).trim()
+    if (configuredRemote && configuredRemote !== '.' && configuredMerge.startsWith('refs/heads/')) {
+      const remoteBranch = configuredMerge.slice('refs/heads/'.length)
+      return { remote: this.safeRemoteName(configuredRemote), remoteBranch: this.safeRef(remoteBranch), upstream: `${configuredRemote}/${remoteBranch}` }
+    }
+    const remotes = (await this.run(root, ['remote'])).split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+    const remote = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : ''
+    if (!remote) {
+      throw new Error(remotes.length
+        ? '当前分支没有 upstream，且仓库有多个 Remote。请先在 Push 窗口选择目标并设置 upstream。'
+        : '仓库没有 Remote。P4V Submit 必须有可接收提交的服务器。')
+    }
+    return { remote: this.safeRemoteName(remote), remoteBranch: this.safeRef(branch), upstream: `${remote}/${branch}` }
+  }
+
+  private async finishStrictSubmit(root: string, session: StrictSubmitSession): Promise<StrictSubmitResult> {
+    const branch = (await this.run(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim()
+    if (branch !== session.branch) throw new Error(`等待提交的是分支 ${session.branch}，请切回该分支后重试。`)
+
+    if (!session.stashHash) {
+      const dirty = (await this.run(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all'])).length > 0
+      if (dirty) {
+        await this.run(root, ['stash', 'push', '--include-untracked', '-m', `P4Git strict submit ${session.commit.slice(0, 10)}`])
+        session.stashHash = (await this.run(root, ['rev-parse', 'refs/stash'])).trim()
+        await this.writeStrictSubmitSession(root, session)
+      }
+    }
+
+    let attempts = session.attempts
+    while (attempts < 3) {
+      attempts += 1
+      session.attempts = attempts
+      await this.writeStrictSubmitSession(root, session)
+      await this.run(root, ['fetch', session.remote, '--prune'])
+      const remoteRef = `refs/remotes/${session.remote}/${session.remoteBranch}`
+      const remoteExists = await this.run(root, ['show-ref', '--verify', '--quiet', remoteRef]).then(() => true).catch(() => false)
+      if (remoteExists) {
+        const containsRemote = await this.run(root, ['merge-base', '--is-ancestor', remoteRef, 'HEAD']).then(() => true).catch(() => false)
+        if (!containsRemote) {
+          await this.run(root, ['rebase', remoteRef])
+          session.commit = (await this.run(root, ['rev-parse', 'HEAD'])).trim()
+          await this.writeStrictSubmitSession(root, session)
+        }
+      }
+      try {
+        await this.run(root, ['push', '--set-upstream', session.remote, `HEAD:refs/heads/${session.remoteBranch}`])
+      } catch (error) {
+        if (attempts < 3 && /non-fast-forward|fetch first|rejected/i.test(asErrorMessage(error))) continue
+        throw error
+      }
+      const head = (await this.run(root, ['rev-parse', 'HEAD'])).trim()
+      const advertised = (await this.run(root, ['ls-remote', '--heads', session.remote, `refs/heads/${session.remoteBranch}`])).trim().split(/\s+/)[0] ?? ''
+      if (advertised !== head) {
+        if (attempts < 3) continue
+        throw new Error(`Push 返回后服务器分支仍不是本地提交（local ${head.slice(0, 10)}, remote ${advertised.slice(0, 10) || 'missing'}）。`)
+      }
+
+      const warning = await this.restoreStrictSubmitWorkspace(root, session)
+      const state = await this.readChangelists(root)
+      for (const path of session.paths) delete state.assignments[path]
+      await Promise.all([this.writeChangelists(root, state), this.removeStrictSubmitSession(root)])
+      return { commit: head, shortHash: head.slice(0, 10), upstream: session.upstream, attempts, warning }
+    }
+    throw new Error('远端在提交期间持续更新，3 次安全重试仍未成功。没有使用 Force Push。')
+  }
+
+  private async markLocalOnly(root: string, commits: CommitInfo[]): Promise<CommitInfo[]> {
+    const upstream = (await this.run(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => '')).trim()
+    if (!upstream) return commits.map((commit) => ({ ...commit, localOnly: true }))
+    const localHashes = new Set((await this.run(root, ['rev-list', 'HEAD', `^${upstream}`]).catch(() => '')).split(/\r?\n/).filter(Boolean))
+    return commits.map((commit) => ({ ...commit, localOnly: localHashes.has(commit.hash) }))
+  }
+
+  private async restoreStrictSubmitWorkspace(root: string, session: StrictSubmitSession): Promise<string | undefined> {
+    if (!session.stashHash) return undefined
+    try {
+      await this.run(root, ['stash', 'apply', '--index', session.stashHash])
+      const stashList = (await this.run(root, ['stash', 'list', '--format=%H%x1f%gd'])).split(/\r?\n/)
+      const match = stashList.map((line) => line.split('\x1f')).find(([hash]) => hash === session.stashHash)
+      if (match?.[1]) await this.run(root, ['stash', 'drop', match[1]])
+      return undefined
+    } catch (error) {
+      return `服务器已接收提交，但恢复其他本地 Changelist 时发生冲突；保护用 Stash ${session.stashHash.slice(0, 10)} 已保留。${asErrorMessage(error)}`
+    }
+  }
+
+  private async strictSubmitPath(root: string): Promise<string> {
+    const gitPath = (await this.run(root, ['rev-parse', '--git-path', 'p4git/strict-submit.json'])).trim()
+    return isAbsolute(gitPath) ? normalize(gitPath) : resolve(root, gitPath)
+  }
+
+  private async readStrictSubmitSession(root: string): Promise<StrictSubmitSession | undefined> {
+    try {
+      const parsed = JSON.parse(await readFile(await this.strictSubmitPath(root), 'utf8')) as Partial<StrictSubmitSession>
+      if (parsed.version !== 1 || typeof parsed.branch !== 'string' || typeof parsed.remote !== 'string' ||
+          typeof parsed.remoteBranch !== 'string' || typeof parsed.upstream !== 'string' || typeof parsed.commit !== 'string' ||
+          !Array.isArray(parsed.paths) || typeof parsed.attempts !== 'number' || typeof parsed.createdAt !== 'string') return undefined
+      return parsed as StrictSubmitSession
+    } catch {
+      return undefined
+    }
+  }
+
+  private async writeStrictSubmitSession(root: string, session: StrictSubmitSession): Promise<void> {
+    const filePath = await this.strictSubmitPath(root)
+    await mkdir(dirname(filePath), { recursive: true })
+    const temporary = `${filePath}.${process.pid}.tmp`
+    await writeFile(temporary, JSON.stringify(session, null, 2), 'utf8')
+    await rename(temporary, filePath)
+  }
+
+  private async removeStrictSubmitSession(root: string): Promise<void> {
+    await rm(await this.strictSubmitPath(root), { force: true })
   }
 
   private async repositoryRoot(repoPath: string): Promise<string> {

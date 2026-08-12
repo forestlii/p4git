@@ -20,7 +20,7 @@ P4Git is a Windows desktop client that applies a P4V-style workspace and changel
 | Default changelist | Unstaged and untracked working-tree changes |
 | Named changelist | Persistent local grouping stored under `.git/p4git`; not synchronized |
 | Ready to submit | Staged changes in the Git index |
-| Submit changes | Create a local Git commit |
+| Submit changes | Deliver and verify a commit on the tracked server branch |
 | Fetch | Download remote refs without modifying the working tree |
 | Pull | Fast-forward the current branch from its upstream |
 | Push | Upload local commits to the upstream remote |

@@ -59,7 +59,7 @@ If Git is not found, select **Choose git.exe** and browse to a compatible execut
 3. Double-click a file or choose **Diff** to review it in the bottom Diff Summary pane.
 4. Right-click the list and choose **Submit Changelist**. Review the exact files, enter a description, and submit.
 
-This creates a local Git commit. It does not automatically push. Use **Connection > Push** when you are ready to publish the commit to the remote.
+Submit now follows P4V semantics: it Fetches, creates the commit, rebases safely when the server moved, Pushes, and verifies that the remote branch advertises the exact commit. P4Git reports success only after that verification. Use **Tools > Git > Commit Locally** only when you intentionally want a Git commit that is not sent to the server.
 
 ## Next Steps
 

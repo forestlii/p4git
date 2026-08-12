@@ -20,7 +20,7 @@ P4Git 是一款 Windows 桌面客户端，它将接近 P4V 的工作区与变更
 | Default changelist | 未暂存和未跟踪的工作区改动 |
 | 命名 Changelist | 保存在 `.git/p4git` 中的本地持久分组，不参与同步 |
 | Ready to submit | Git 索引中已暂存的改动 |
-| 提交变更 | 创建本地 Git commit |
+| 提交变更 | 将 commit 送达并验证到跟踪的服务器分支 |
 | Fetch | 下载远程引用，不修改工作区 |
 | Pull | 从 upstream 快进当前分支 |
 | Push | 将本地提交上传到 upstream |

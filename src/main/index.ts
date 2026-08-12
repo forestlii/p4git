@@ -15,6 +15,7 @@ import type {
   MenuAction,
   PullResult,
   PushRequest,
+  StrictSubmitRequest,
   InitRequest,
   ResetMode,
   SelectiveMergeRequest,
@@ -140,6 +141,7 @@ function createApplicationMenu(): void {
             action('Merge Branch...', 'git-merge'),
             action('Rebase onto Branch...', 'git-rebase'),
             action('Create Tag...', 'git-tag'),
+            action('Commit Locally...', 'git-commit-local'),
             action('Amend Last Commit...', 'git-amend'),
             { type: 'separator' },
             {
@@ -275,6 +277,7 @@ function contextMenuTemplate(
         gitMenu([
           item('Stage', 'git-stage', !request.staged),
           item('Unstage', 'git-unstage', Boolean(request.staged)),
+          item('Commit Changelist Locally...', 'git-commit-local'),
           item('Stash This File...', 'git-stash-path'),
           separator,
           item(request.multiple ? 'Lock Selected with Git LFS' : 'Lock with Git LFS', 'lfs-lock', !request.untracked),
@@ -365,7 +368,9 @@ function contextMenuTemplate(
         item('New Changelist...', 'new-changelist'),
         item('Edit Changelist...', 'edit-changelist', custom),
         item('Shelve Changelist...', 'shelve-changelist', !request.empty && id !== '__ready__'),
-        item('Delete Changelist...', 'delete-changelist', custom)
+        item('Delete Changelist...', 'delete-changelist', custom),
+        separator,
+        gitMenu([item('Commit Changelist Locally...', 'git-commit-local', !request.empty)])
       ]
     }
     case 'history-revision':
@@ -494,6 +499,10 @@ function registerIpc(): void {
   ipcMain.handle('git:commit', (_event, repoPath: string, message: string, amend?: boolean) =>
     git.commit(repoPath, message, amend)
   )
+  ipcMain.handle('git:strict-submit', (_event, request: StrictSubmitRequest) => git.strictSubmit(request))
+  ipcMain.handle('git:resume-submit', (_event, repoPath: string) => git.resumeSubmit(repoPath))
+  ipcMain.handle('git:prepare-submit-mr', (_event, repoPath: string) => git.prepareSubmitMergeRequest(repoPath))
+  ipcMain.handle('git:complete-submit-mr', (_event, repoPath: string) => git.completeSubmitMergeRequest(repoPath))
   ipcMain.handle('git:history', (_event, repoPath: string, limit?: number) =>
     git.history(repoPath, limit)
   )

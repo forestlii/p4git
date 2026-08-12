@@ -319,6 +319,7 @@ export default function App(): React.JSX.Element {
   const [changelistEditor, setChangelistEditor] = useState<ChangelistEditorState>()
   const [commitMessage, setCommitMessage] = useState('')
   const [amendCommit, setAmendCommit] = useState(false)
+  const [localCommitMode, setLocalCommitMode] = useState(false)
   const [newBranch, setNewBranch] = useState('')
   const [logCollapsed, setLogCollapsed] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([
@@ -1447,6 +1448,7 @@ export default function App(): React.JSX.Element {
     }
     switch (action) {
       case 'submit': {
+        setLocalCommitMode(false)
         const id = isStaged ? '__ready__' : changelistId ?? '__default__'
         const name = id === '__ready__' ? 'Ready to submit' : id === '__default__' ? 'Default changelist' : changelistState.changelists.find((item) => item.id === id)?.name ?? 'Changelist'
         await openSubmitForChangelist(id, name)
@@ -1466,6 +1468,13 @@ export default function App(): React.JSX.Element {
       case 'git-stage': await moveChangesToReady(effectiveSelections); break
       case 'git-unstage': await moveChangesToChangelist(effectiveSelections); break
       case 'git-stash-path': await stashChanges(repository.root, [...new Set(effectiveSelections.map((selection) => selection.change.path))]); break
+      case 'git-commit-local': {
+        setLocalCommitMode(true)
+        const id = isStaged ? '__ready__' : changelistId ?? '__default__'
+        const name = id === '__ready__' ? 'Ready to submit' : id === '__default__' ? 'Default changelist' : changelistState.changelists.find((item) => item.id === id)?.name ?? 'Changelist'
+        await openSubmitForChangelist(id, name)
+        break
+      }
       case 'lfs-lock': await changeLfsLocks([...new Set(effectiveSelections.map((selection) => selection.change.path))], true); break
       case 'lfs-unlock': await changeLfsLocks([...new Set(effectiveSelections.map((selection) => selection.change.path))], false); break
       case 'lfs-locks': openLfsLocks(); break
@@ -1476,7 +1485,8 @@ export default function App(): React.JSX.Element {
     if (!repository) return
     const action = await window.p4git.showContextMenu({ kind: 'changelist', currentChangelistId: id, empty: rows.length === 0 })
     if (action === 'new-changelist') openNewChangelist()
-    else if (action === 'submit-changelist') await openSubmitForChangelist(id, name)
+    else if (action === 'submit-changelist') { setLocalCommitMode(false); await openSubmitForChangelist(id, name) }
+    else if (action === 'git-commit-local') { setLocalCommitMode(true); await openSubmitForChangelist(id, name) }
     else if (action === 'stage-changelist') {
       const paths = [...new Set(rows.flatMap((change) => change.oldPath ? [change.path, change.oldPath] : [change.path]))]
       await performGitAt(repository.root, 'stage-changelist', `add -- ${paths.join(' ')}`, () => window.p4git.stage(repository.root, paths), `${name} moved to Ready to submit.`)
@@ -1601,6 +1611,7 @@ export default function App(): React.JSX.Element {
   const amendLastCommit = useCallback(async () => {
     if (!repository || !history[0]) return
     setAmendCommit(true)
+    setLocalCommitMode(true)
     setCommitMessage(history[0].subject)
     setSubmitChangelist({ name: 'Amend last commit', paths: staged.map((change) => change.path), changes: staged })
     setSubmitOpen(true)
@@ -1620,7 +1631,8 @@ export default function App(): React.JSX.Element {
     else if (action === 'git-reflog') await showReflog(path)
   }, [copyText, openRepository, performGitAt, repository, showReflog, showStashes, stashChanges, synchronizeRepository])
 
-  const openSelectedSubmit = useCallback(async () => {
+  const openSelectedSubmit = useCallback(async (localOnly = false) => {
+    setLocalCommitMode(localOnly)
     if (pendingSelection) {
       const id = pendingSelection.staged ? '__ready__' : pendingSelection.changelistId ?? '__default__'
       const name = id === '__ready__' ? 'Ready to submit' : id === '__default__' ? 'Default changelist' : changelistState.changelists.find((item) => item.id === id)?.name ?? 'Changelist'
@@ -1640,7 +1652,7 @@ export default function App(): React.JSX.Element {
       case 'focus-filter': filterRef.current?.focus(); break
       case 'refresh': if (repository) void perform('refresh', 'git status', refresh, 'Workspace refreshed.', false); break
       case 'get-latest': void getLatest(); break
-      case 'submit': openMainTab('pending'); void openSelectedSubmit(); break
+      case 'submit': openMainTab('pending'); void openSelectedSubmit(false); break
       case 'new-changelist': openMainTab('pending'); openNewChangelist(); break
       case 'history': void showSelectedHistory(); break
       case 'checkout-file': void checkoutSelected(false); break
@@ -1653,13 +1665,14 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.8.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.9.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
       case 'git-shelves': setShelvesOpen(true); break
       case 'git-remotes': setRemotesOpen(true); break
       case 'git-amend': void amendLastCommit(); break
+      case 'git-commit-local': openMainTab('pending'); void openSelectedSubmit(true); break
       case 'git-reflog': void showReflog(); break
       case 'gitlab': void openGitLab(); break
       case 'resolve-conflicts': void openConflicts(); break
@@ -1795,6 +1808,10 @@ export default function App(): React.JSX.Element {
   }
 
   async function submitCommit(): Promise<void> {
+    if (operationState.submitPending) {
+      await retryPendingSubmit()
+      return
+    }
     const submitChanges = submitChangelist?.changes ?? staged
     if (!repository || !commitMessage.trim() || (!amendCommit && submitChanges.length === 0)) return
     if (submitChangelist?.preparePaths) {
@@ -1808,15 +1825,77 @@ export default function App(): React.JSX.Element {
       if (!prepared) return
     }
     const committedPaths = submitChangelist?.paths ?? staged.map((change) => change.path)
-    const success = await perform('commit', `git commit ${amendCommit ? '--amend ' : ''}-m "${commitMessage.trim()}"`, () => window.p4git.commit(repository.root, commitMessage, amendCommit), amendCommit ? 'Last commit amended.' : `${submitChangelist?.name ?? 'Ready to submit'} submitted as a local Git commit.`)
+    let warning: string | undefined
+    const localOnly = amendCommit || localCommitMode
+    const success = await perform(
+      localOnly ? 'commit' : 'submit',
+      localOnly ? `git commit ${amendCommit ? '--amend ' : ''}-m "${commitMessage.trim()}"` : 'p4git submit --fetch --rebase --push --verify',
+      async () => {
+        if (localOnly) return window.p4git.commit(repository.root, commitMessage, amendCommit)
+        const result = await window.p4git.strictSubmit({ repoPath: repository.root, message: commitMessage, paths: committedPaths })
+        warning = result.warning
+        return result
+      },
+      localOnly ? (amendCommit ? 'Last commit amended locally.' : 'Local Git commit created; it has not been sent to the server.') : 'Server confirmed the submitted changelist.'
+    )
     if (!success) return
-    setChangelistState(await window.p4git.assignChangelist(repository.root, committedPaths))
+    setChangelistState(localOnly ? await window.p4git.assignChangelist(repository.root, committedPaths) : await window.p4git.getChangelists(repository.root))
+    if (warning) { setError(warning); appendLog(warning, 'error') }
     setCommitMessage('')
     setAmendCommit(false)
+    setLocalCommitMode(false)
     setSubmitOpen(false)
     setSubmitChangelist(undefined)
     openMainTab('submitted')
     setHistory(await window.p4git.getHistory(repository.root))
+  }
+
+  async function retryPendingSubmit(): Promise<void> {
+    if (!repository) return
+    let warning: string | undefined
+    const success = await perform('submit', 'p4git submit --retry --push --verify', async () => {
+      const result = await window.p4git.resumeSubmit(repository.root)
+      warning = result.warning
+    }, 'Server confirmed the pending local commit.')
+    if (!success) return
+    if (warning) { setError(warning); appendLog(warning, 'error') }
+    setCommitMessage('')
+    setAmendCommit(false)
+    setLocalCommitMode(false)
+    setSubmitOpen(false)
+    setSubmitChangelist(undefined)
+    openMainTab('submitted')
+    setHistory(await window.p4git.getHistory(repository.root))
+  }
+
+  async function submitThroughMergeRequest(): Promise<void> {
+    if (!repository) return
+    const config = await window.p4git.getGitLabConfig(repository.root).catch(() => undefined)
+    if (!config?.baseUrl || !config.projectPath || !config.tokenConfigured) {
+      setError('保护分支回退需要先在 Tools > Git > GitLab 配置服务器、项目和访问令牌。')
+      return
+    }
+    if (!window.confirm('Direct Submit has not reached the target branch. Push the commit to a verified p4git/* branch and create a GitLab Merge Request instead?\n\nThe target branch will remain unchanged until the MR is merged.')) return
+    let warning: string | undefined
+    let webUrl: string | undefined
+    const success = await perform('submit-mr', 'p4git submit --fallback-merge-request', async () => {
+      const target = await window.p4git.prepareSubmitMergeRequest(repository.root)
+      const mr = await window.p4git.createGitLabMergeRequest(
+        repository.root,
+        commitMessage.trim() || `Submit ${target.shortHash} to ${target.targetBranch}`,
+        target.sourceBranch,
+        target.targetBranch,
+        `P4Git strict Submit fallback for commit ${target.commit}.\n\nDirect Push to ${target.targetBranch} was not accepted by the server.`
+      )
+      webUrl = mr.webUrl
+      warning = await window.p4git.completeSubmitMergeRequest(repository.root)
+    }, 'Commit uploaded to a verified server branch and Merge Request created; the target branch is not submitted until the MR is merged.')
+    if (!success) return
+    if (warning) { setError(warning); appendLog(warning, 'error') }
+    setSubmitOpen(false)
+    setSubmitChangelist(undefined)
+    setCommitMessage('')
+    if (webUrl) await window.p4git.openExternal(webUrl)
   }
 
   async function createBranch(): Promise<void> {
@@ -1904,7 +1983,7 @@ export default function App(): React.JSX.Element {
         canTimelapse={Boolean(selectedPath && !selectedEntry?.isDirectory && selectedChange?.kind !== 'untracked')}
         onRefresh={() => void perform('refresh', 'git status', refresh, 'Workspace refreshed.', false)}
         onGetLatest={() => void getLatest()}
-        onSubmit={() => { openMainTab('pending'); void openSelectedSubmit() }}
+        onSubmit={() => { if (operationState.submitPending) void retryPendingSubmit(); else { openMainTab('pending'); void openSelectedSubmit(false) } }}
         onCheckout={() => void checkoutSelected(false)}
         onAdd={() => void stageSelected()}
         onDelete={() => void deleteSelected()}
@@ -1971,16 +2050,16 @@ export default function App(): React.JSX.Element {
         {!logCollapsed && <div className="log-output" onContextMenu={async (event) => { event.preventDefault(); if (await window.p4git.showContextMenu({ kind: 'log' }) === 'clear-log') setLogs([]) }}>{logs.map((entry) => <div key={entry.id} className={entry.kind}><span>●</span><time>{entry.time}</time><code>{entry.text}</code></div>)}</div>}
       </section>
 
-      <footer className="classic-status"><span>{repository.root.slice(0, 3)}</span><span>{repository.root}{currentDirectory ? `\\${currentDirectory.replaceAll('/', '\\')}` : ''}</span>{operationState.operation && <button className="operation-status" onClick={() => operationState.conflicts ? void openConflicts() : undefined}><AlertTriangle size={12} />{operationState.operation} · {operationState.conflicts} conflict(s){operationState.canContinue ? ' · ready to continue' : ''}</button>}<span className="grow" />{busy && <button className="status-running" onClick={() => setTaskCenterOpen(true)} title="Open task progress"><LoaderCircle className="spin" size={13} /><span>{busy === 'fetch' ? 'Fetching remote references…' : `Running ${busy}…`}</span><i><b /></i></button>}<span>{repository.upstream ? `Tracking ${repository.upstream}` : 'No upstream'}</span><span className={busy ? 'status-ready running' : 'status-ready'}>{busy ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</span></footer>
+      <footer className="classic-status"><span>{repository.root.slice(0, 3)}</span><span>{repository.root}{currentDirectory ? `\\${currentDirectory.replaceAll('/', '\\')}` : ''}</span>{operationState.operation && <button className="operation-status" onClick={() => operationState.conflicts ? void openConflicts() : undefined}><AlertTriangle size={12} />{operationState.operation} · {operationState.conflicts} conflict(s){operationState.canContinue ? ' · ready to continue' : ''}</button>}{operationState.submitPending && <button className="operation-status" onClick={() => operationState.conflicts ? void openConflicts() : void retryPendingSubmit()}><AlertTriangle size={12} />Local only {operationState.submitCommit?.slice(0, 10)} · {operationState.conflicts ? 'Resolve required' : 'Retry Submit'}</button>}<span className="grow" />{busy && <button className="status-running" onClick={() => setTaskCenterOpen(true)} title="Open task progress"><LoaderCircle className="spin" size={13} /><span>{busy === 'fetch' ? 'Fetching remote references…' : busy === 'submit' ? 'Submitting to server…' : `Running ${busy}…`}</span><i><b /></i></button>}<span>{repository.upstream ? `Tracking ${repository.upstream}${repository.ahead ? ` · ${repository.ahead} local only` : ''}` : 'No upstream'}</span><span className={busy ? 'status-ready running' : 'status-ready'}>{busy ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />}</span></footer>
 
-      {submitOpen && <SubmitDialog name={submitChangelist?.name ?? 'Ready to submit'} staged={submitChangelist?.changes ?? staged} message={commitMessage} amend={amendCommit} onMessage={setCommitMessage} onCancel={() => { setSubmitOpen(false); setSubmitChangelist(undefined); setAmendCommit(false) }} onSubmit={() => void submitCommit()} busy={busy === 'commit' || busy === 'prepare-changelist'} conflicts={(submitChangelist?.changes ?? staged).some((change) => change.conflicted)} />}
+      {submitOpen && <SubmitDialog name={submitChangelist?.name ?? 'Ready to submit'} staged={submitChangelist?.changes ?? staged} message={commitMessage} amend={amendCommit} localOnly={localCommitMode} pending={Boolean(operationState.submitPending)} onMessage={setCommitMessage} onCancel={() => { setSubmitOpen(false); setSubmitChangelist(undefined); setAmendCommit(false); setLocalCommitMode(false) }} onSubmit={() => void submitCommit()} onMergeRequest={() => void submitThroughMergeRequest()} busy={busy === 'commit' || busy === 'submit' || busy === 'submit-mr' || busy === 'prepare-changelist'} conflicts={(submitChangelist?.changes ?? staged).some((change) => change.conflicted)} />}
       {timelapseView && <TimelapseDialog view={timelapseView} onClose={() => setTimelapseView(undefined)} />}
       {stashesView && <StashesDialog view={stashesView} onClose={() => setStashesView(undefined)} onApply={(entry) => void applyStashEntry(entry, false)} onPop={(entry) => void applyStashEntry(entry, true)} onDrop={(entry) => void dropStashEntry(entry)} />}
       {reflogView && <ReflogDialog view={reflogView} onClose={() => setReflogView(undefined)} onCopy={(entry) => void copyText(entry.hash)} />}
       {preferencesOpen && <PreferencesDialog health={health} value={preferenceDraft} onChange={setPreferenceDraft} onChooseGit={() => void chooseGit()} onChooseDiff={() => void chooseDiffTool()} onChooseMerge={() => void chooseMergeTool()} onCancel={() => setPreferencesOpen(false)} onSave={() => void savePreferences()} busy={busy === 'preferences'} />}
       {changelistEditor && <ChangelistDialog value={changelistEditor} onChange={setChangelistEditor} onCancel={() => setChangelistEditor(undefined)} onSave={() => void saveChangelist()} busy={busy === 'new-changelist' || busy === 'edit-changelist'} />}
       {branchEditor && <BranchDialog value={branchEditor} onChange={setBranchEditor} onCancel={() => setBranchEditor(undefined)} onSave={() => void saveBranch()} busy={busy === 'branch'} />}
-      {conflictsView && <ConflictResolver repoPath={repository.root} conflicts={conflictsView} onClose={() => setConflictsView(undefined)} onChanged={async () => { const next = await window.p4git.getConflicts(repository.root); setConflictsView(next); await refresh(); return next }} />}
+      {conflictsView && <ConflictResolver repoPath={repository.root} conflicts={conflictsView} onClose={() => setConflictsView(undefined)} onContinued={(message) => { appendLog(message, 'success'); if (message.includes('服务器已确认提交')) openMainTab('submitted') }} onChanged={async () => { const next = await window.p4git.getConflicts(repository.root); setConflictsView(next); await refresh(); return next }} />}
       {gitlabOpen && gitlabConfig && <GitLabDialog repoPath={repository.root} branch={repository.branch} branches={branches} config={gitlabConfig} overview={gitlabView} onClose={() => setGitlabOpen(false)} onUpdate={(config, overview) => { setGitlabConfig(config); setGitlabView(overview) }} />}
       {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} onComplete={(path) => { setCloneOpen(false); void openRepository(path) }} />}
       {initOpen && <InitDialog onClose={() => setInitOpen(false)} onComplete={(path) => { setInitOpen(false); void openRepository(path) }} />}
@@ -2331,7 +2410,7 @@ function SubmittedTable({ commits, scope, filter, selected, onSelect, onContext,
     const files = await onExpand(commit)
     setExpanded((current) => ({ ...current, [commit.hash]: files }))
   }
-  return <div className="submitted-layout">{scope && <div className="submitted-scope"><FileText size={14} /><strong>Submitted changes for:</strong><span title={scope}>{scope === '.' ? 'Repository' : scope}</span></div>}<div className="classic-table submitted-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable"><button onClick={() => setSort('change')}>Change</button><button onClick={() => setSort('date')}>Date Submitted</button><button onClick={() => setSort('author')}>Submitted By</button><button onClick={() => setSort('description')}>Description</button></div>{rows.map((commit) => <div key={commit.hash} className="submitted-group"><button className={`table-row ${selection.selected.has(commit.hash) || (!selection.selected.size && selected === commit.hash) ? 'selected' : ''}`} onClick={(event) => { selection.click(commit.hash, event); onSelect(commit) }} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(commit.hash); onContext(commit, rows.filter((row) => keys.has(row.hash))) }}><span className="change-cell"><span className="expand-hit" onClick={(event) => { event.stopPropagation(); void toggle(commit) }}>{expanded[commit.hash] ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span><i>▲</i><code>{commit.shortHash}</code></span><span>{formatDate(commit.date)}</span><span title={commit.author}>{commit.author}</span><span title={commit.subject}>{commit.subject}</span></button>{expanded[commit.hash] && <div className="submitted-files-inline">{expanded[commit.hash].map((file) => <div title={file.path} key={`${file.kind}-${file.path}`}><i className={`change-mark ${file.kind === 'A' ? 'added' : file.kind === 'D' ? 'deleted' : 'modified'}`}>{file.kind}</i><span>{file.path}</span></div>)}{expanded[commit.hash].length === 0 && <span>Loading or no changed files...</span>}</div>}</div>)}{rows.length === 0 && <EmptyTable text="No submitted changes match the current path and filter." />}</div></div>
+  return <div className="submitted-layout">{scope && <div className="submitted-scope"><FileText size={14} /><strong>Submitted changes for:</strong><span title={scope}>{scope === '.' ? 'Repository' : scope}</span></div>}<div className="classic-table submitted-table" tabIndex={0} onKeyDown={selection.keyDown}><div className="table-head sortable"><button onClick={() => setSort('change')}>Change</button><button onClick={() => setSort('date')}>Date Submitted</button><button onClick={() => setSort('author')}>Submitted By</button><button onClick={() => setSort('description')}>Description</button></div>{rows.map((commit) => <div key={commit.hash} className="submitted-group"><button className={`table-row ${commit.localOnly ? 'local-only' : ''} ${selection.selected.has(commit.hash) || (!selection.selected.size && selected === commit.hash) ? 'selected' : ''}`} onClick={(event) => { selection.click(commit.hash, event); onSelect(commit) }} onContextMenu={(event) => { event.preventDefault(); const keys = selection.context(commit.hash); onContext(commit, rows.filter((row) => keys.has(row.hash))) }}><span className="change-cell"><span className="expand-hit" onClick={(event) => { event.stopPropagation(); void toggle(commit) }}>{expanded[commit.hash] ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span><i title={commit.localOnly ? 'Local only — not confirmed by upstream' : 'Server confirmed'}>{commit.localOnly ? '●' : '▲'}</i><code>{commit.shortHash}</code>{commit.localOnly && <em className="local-only-label">LOCAL ONLY</em>}</span><span>{formatDate(commit.date)}</span><span title={commit.author}>{commit.author}</span><span title={commit.subject}>{commit.subject}</span></button>{expanded[commit.hash] && <div className="submitted-files-inline">{expanded[commit.hash].map((file) => <div title={file.path} key={`${file.kind}-${file.path}`}><i className={`change-mark ${file.kind === 'A' ? 'added' : file.kind === 'D' ? 'deleted' : 'modified'}`}>{file.kind}</i><span>{file.path}</span></div>)}{expanded[commit.hash].length === 0 && <span>Loading or no changed files...</span>}</div>}</div>)}{rows.length === 0 && <EmptyTable text="No submitted changes match the current path and filter." />}</div></div>
 }
 
 interface GraphLayoutRow {
@@ -2491,11 +2570,11 @@ function BranchDialog({ value, onChange, onCancel, onSave, busy }: { value: Bran
   return <div className="modal-backdrop"><section className="branch-dialog" role="dialog" aria-modal="true" aria-label="New Branch from Here"><div className="modal-title"><GitBranch size={16} /><strong>New Branch from Here</strong><button onClick={onCancel}><X size={16} /></button></div><div className="modal-body"><label>Start point:</label><div className="branch-source"><GitBranch size={15} /><code title={value.source}>{value.source}</code></div><label htmlFor="new-branch-name">New local branch name:</label><input id="new-branch-name" autoFocus value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter' && !invalid && !busy) onSave() }} placeholder="feature/name" /><p>The new local branch starts at the selected branch/ref and becomes the current workspace branch.</p>{invalid && value.name && <p className="preference-error">Enter a valid Git branch name without spaces or Git ref-control characters.</p>}</div><div className="modal-actions"><button onClick={onCancel}>Cancel</button><button className="primary-classic" onClick={onSave} disabled={invalid || busy}>{busy && <LoaderCircle className="spin" size={14} />}Create &amp; Switch</button></div></section></div>
 }
 
-function SubmitDialog({ name, staged, message, amend, onMessage, onCancel, onSubmit, busy, conflicts }: { name: string; staged: FileChange[]; message: string; amend: boolean; onMessage: (value: string) => void; onCancel: () => void; onSubmit: () => void; busy: boolean; conflicts: boolean }): React.JSX.Element {
-  return <div className="modal-backdrop"><section className="submit-dialog" role="dialog" aria-modal="true" aria-label="Submit Changelist"><div className="modal-title"><BrandIcon /><strong>{amend ? 'Amend Last Commit' : 'Submit Changelist'}</strong><button onClick={onCancel}><X size={16} /></button></div><div className="modal-body"><div className="field-row"><label>Changelist:</label><strong>{name}</strong></div>{amend && <div className="modal-warning"><AlertTriangle size={15} />Amend rewrites the last commit ID. Do not amend a commit already shared with teammates.</div>}<label htmlFor="submit-description">Description:</label><textarea id="submit-description" autoFocus value={message} onChange={(event) => onMessage(event.target.value)} placeholder="Enter a description for this change..." /><div className="submit-files-title"><strong>{amend ? 'Additional staged files' : 'Files'}</strong><span>{staged.length} files</span></div><div className="submit-files">{staged.map((change) => <div key={change.path}><i className={`change-mark ${change.kind}`}>{changeCode(change)}</i><span>{change.path}</span><em>{changeLabel(change)}</em></div>)}{staged.length === 0 && <p>{amend ? 'No additional files; only the commit message will change.' : 'No files are ready to submit. Move files into this changelist first.'}</p>}</div>{conflicts && <div className="modal-warning"><AlertTriangle size={15} />Resolve conflicts before submitting.</div>}</div><div className="modal-actions"><button onClick={onCancel}>Cancel</button><button className="primary-classic" onClick={onSubmit} disabled={!message.trim() || (!amend && staged.length === 0) || conflicts || busy}>{busy && <LoaderCircle className="spin" size={14} />}{amend ? 'Amend' : 'Submit'}</button></div></section></div>
+function SubmitDialog({ name, staged, message, amend, localOnly, pending, onMessage, onCancel, onSubmit, onMergeRequest, busy, conflicts }: { name: string; staged: FileChange[]; message: string; amend: boolean; localOnly: boolean; pending: boolean; onMessage: (value: string) => void; onCancel: () => void; onSubmit: () => void; onMergeRequest: () => void; busy: boolean; conflicts: boolean }): React.JSX.Element {
+  return <div className="modal-backdrop"><section className="submit-dialog" role="dialog" aria-modal="true" aria-label="Submit Changelist"><div className="modal-title"><BrandIcon /><strong>{amend ? 'Amend Last Commit' : localOnly ? 'Commit Locally' : 'Submit Changelist'}</strong><button onClick={onCancel}><X size={16} /></button></div><div className="modal-body"><div className="field-row"><label>Changelist:</label><strong>{name}</strong></div>{pending && <div className="modal-warning"><AlertTriangle size={15} />The Git commit exists locally, but the target branch has not confirmed it. Retry performs Fetch, Rebase if needed, Push, and remote verification. For a protected branch, create a GitLab Merge Request instead.</div>}{!pending && !localOnly && <div className="submit-guarantee"><CircleCheck size={15} />Success is reported only after the remote server advertises this exact commit.</div>}{localOnly && <div className="modal-warning"><AlertTriangle size={15} />This Git-only action does not send the commit to the server.</div>}{amend && <div className="modal-warning"><AlertTriangle size={15} />Amend rewrites the last commit ID. Do not amend a commit already shared with teammates.</div>}<label htmlFor="submit-description">Description:</label><textarea id="submit-description" autoFocus disabled={pending} value={message} onChange={(event) => onMessage(event.target.value)} placeholder="Enter a description for this change..." /><div className="submit-files-title"><strong>{amend ? 'Additional staged files' : 'Files'}</strong><span>{staged.length} files</span></div><div className="submit-files">{staged.map((change) => <div key={change.path}><i className={`change-mark ${change.kind}`}>{changeCode(change)}</i><span>{change.path}</span><em>{changeLabel(change)}</em></div>)}{staged.length === 0 && <p>{pending ? 'Files are already stored in the pending local commit.' : amend ? 'No additional files; only the commit message will change.' : 'No files are ready to submit. Move files into this changelist first.'}</p>}</div>{conflicts && <div className="modal-warning"><AlertTriangle size={15} />Resolve conflicts before submitting.</div>}</div><div className="modal-actions"><button onClick={onCancel}>Cancel</button>{pending && <button onClick={onMergeRequest} disabled={conflicts || busy}>Create GitLab MR…</button>}<button className="primary-classic" onClick={onSubmit} disabled={(!pending && (!message.trim() || (!amend && staged.length === 0))) || conflicts || busy}>{busy && <LoaderCircle className="spin" size={14} />}{pending ? 'Retry Submit' : amend ? 'Amend Locally' : localOnly ? 'Commit Locally' : 'Submit to Server'}</button></div></section></div>
 }
 
-function ConflictResolver({ repoPath, conflicts, onClose, onChanged }: { repoPath: string; conflicts: ConflictFile[]; onClose: () => void; onChanged: () => Promise<ConflictFile[]> }): React.JSX.Element {
+function ConflictResolver({ repoPath, conflicts, onClose, onChanged, onContinued }: { repoPath: string; conflicts: ConflictFile[]; onClose: () => void; onChanged: () => Promise<ConflictFile[]>; onContinued: (message: string) => void }): React.JSX.Element {
   const [index, setIndex] = useState(0)
   const [manual, setManual] = useState(conflicts[0]?.result || conflicts[0]?.ours || '')
   const [busy, setBusy] = useState(false)
@@ -2510,7 +2589,7 @@ function ConflictResolver({ repoPath, conflicts, onClose, onChanged }: { repoPat
     catch (reason) { setError(friendlyError(reason)) }
     finally { setBusy(false) }
   }
-  return <div className="modal-backdrop"><section className="conflict-dialog" role="dialog" aria-modal="true"><div className="modal-title"><AlertTriangle size={17} /><strong>Resolve Conflicts</strong><button onClick={onClose}><X size={16} /></button></div><div className="conflict-body"><aside>{conflicts.map((item, itemIndex) => <button title={item.path} key={item.path} className={itemIndex === index ? 'active' : ''} onClick={() => setIndex(itemIndex)}><AlertTriangle size={13} />{item.path}</button>)}</aside>{conflict && <div className="conflict-editor"><div className="conflict-versions"><label>Base<textarea readOnly value={conflict.binary ? 'Binary content — choose a side or use external Merge' : conflict.base} /></label><label>Ours<textarea readOnly value={conflict.binary ? 'Binary content' : conflict.ours} /></label><label>Theirs<textarea readOnly value={conflict.binary ? 'Binary content' : conflict.theirs} /></label></div><label>Result ({blocks.length} unresolved block{blocks.length === 1 ? '' : 's'})<textarea value={manual} disabled={conflict.binary} onChange={(event) => setManual(event.target.value)} /></label>{blocks.length > 0 && <div className="conflict-hunks">{blocks.map((block, blockIndex) => <div key={`${block.start}-${blockIndex}`}><strong>Conflict {blockIndex + 1}</strong><span>{block.ours.split('\n')[0] || '(empty)'} ↔ {block.theirs.split('\n')[0] || '(empty)'}</span><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'ours'))}>Use Ours</button><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'theirs'))}>Use Theirs</button><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'both'))}>Use Both</button></div>)}</div>}<div className="row-actions"><button onClick={() => void resolve('ours')} disabled={busy}>Accept File Ours</button><button onClick={() => void resolve('theirs')} disabled={busy}>Accept File Theirs</button><button onClick={async () => { setBusy(true); setError(''); try { if (!await window.p4git.launchExternalMerge(repoPath, conflict.path)) setError('No external Merge tool configured. Open Preferences to configure one.'); else await onChanged() } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }} disabled={busy}>External 3-way Merge...</button><button className="primary-classic" onClick={() => void resolve('manual')} disabled={busy || conflict.binary || blocks.length > 0}>Save Result &amp; Mark Resolved</button></div></div>}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><span>{conflicts.length} unresolved file(s)</span><button onClick={async () => { setBusy(true); try { await window.p4git.continueOperation(repoPath); const next = await onChanged(); if (!next.length) onClose() } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }} disabled={busy || conflicts.length > 0}>Continue Operation</button><button onClick={onClose}>Close</button></div></section></div>
+  return <div className="modal-backdrop"><section className="conflict-dialog" role="dialog" aria-modal="true"><div className="modal-title"><AlertTriangle size={17} /><strong>Resolve Conflicts</strong><button onClick={onClose}><X size={16} /></button></div><div className="conflict-body"><aside>{conflicts.map((item, itemIndex) => <button title={item.path} key={item.path} className={itemIndex === index ? 'active' : ''} onClick={() => setIndex(itemIndex)}><AlertTriangle size={13} />{item.path}</button>)}</aside>{conflict && <div className="conflict-editor"><div className="conflict-versions"><label>Base<textarea readOnly value={conflict.binary ? 'Binary content — choose a side or use external Merge' : conflict.base} /></label><label>Ours<textarea readOnly value={conflict.binary ? 'Binary content' : conflict.ours} /></label><label>Theirs<textarea readOnly value={conflict.binary ? 'Binary content' : conflict.theirs} /></label></div><label>Result ({blocks.length} unresolved block{blocks.length === 1 ? '' : 's'})<textarea value={manual} disabled={conflict.binary} onChange={(event) => setManual(event.target.value)} /></label>{blocks.length > 0 && <div className="conflict-hunks">{blocks.map((block, blockIndex) => <div key={`${block.start}-${blockIndex}`}><strong>Conflict {blockIndex + 1}</strong><span>{block.ours.split('\n')[0] || '(empty)'} ↔ {block.theirs.split('\n')[0] || '(empty)'}</span><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'ours'))}>Use Ours</button><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'theirs'))}>Use Theirs</button><button onClick={() => setManual((value) => chooseConflictBlock(value, blockIndex, 'both'))}>Use Both</button></div>)}</div>}<div className="row-actions"><button onClick={() => void resolve('ours')} disabled={busy}>Accept File Ours</button><button onClick={() => void resolve('theirs')} disabled={busy}>Accept File Theirs</button><button onClick={async () => { setBusy(true); setError(''); try { if (!await window.p4git.launchExternalMerge(repoPath, conflict.path)) setError('No external Merge tool configured. Open Preferences to configure one.'); else await onChanged() } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }} disabled={busy}>External 3-way Merge...</button><button className="primary-classic" onClick={() => void resolve('manual')} disabled={busy || conflict.binary || blocks.length > 0}>Save Result &amp; Mark Resolved</button></div></div>}</div>{error && <div className="modal-warning">{error}</div>}<div className="modal-actions"><span>{conflicts.length} unresolved file(s)</span><button onClick={async () => { setBusy(true); try { const message = await window.p4git.continueOperation(repoPath); onContinued(message); const next = await onChanged(); if (!next.length) onClose() } catch (reason) { setError(friendlyError(reason)) } finally { setBusy(false) } }} disabled={busy || conflicts.length > 0}>Continue Operation</button><button onClick={onClose}>Close</button></div></section></div>
 }
 
 function GetRevisionDialog({ repoPath, paths, initial, suggestions, onClose, onApply }: { repoPath: string; paths: string[]; initial: string; suggestions: string[]; onClose: () => void; onApply: (revision: RevisionResolution, paths: string[]) => Promise<void> }): React.JSX.Element {

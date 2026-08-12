@@ -59,7 +59,7 @@ P4Git 启动时会依次检查：
 3. 双击文件或点击 **Diff**，在底部 Diff Summary 面板审阅差异。
 4. 右键目标列表选择 **Submit Changelist**，检查准确的文件清单、填写说明并提交。
 
-这一步只创建本地 Git commit，不会自动 Push。确认需要发布到远程后，使用 **Connection > Push**。
+Submit 现在遵循 P4V 语义：依次 Fetch、创建 commit、服务器有更新时安全 Rebase、Push，并验证远端分支确实指向该提交。只有验证通过才会报告成功。只有明确需要不上传服务器的 Git commit 时，才使用 **Tools > Git > Commit Locally**。
 
 ## 下一步
 
