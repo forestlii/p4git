@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.4.1-0c8b87)
 
 ## 核心能力
 
@@ -98,7 +98,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.4.0** 新增增强 Resolve、Get Revision 预览、任务进度中心、跨表格多选、Git LFS Lock 管理、可拖动并持久化的布局、可调文件列宽和外观设置。按区块暂存和 GitHub Pull Request 集成仍在规划中。
+版本 **0.4.1** 修复 **New Branch from Here**：改用可靠的应用内窗口，为远程分支建议本地名称，并验证本地/远程起点；同时包含 0.4.0 的 Resolve、Get Revision、任务、多选、LFS Lock 和个性化布局功能。
 
 ## 协议
 

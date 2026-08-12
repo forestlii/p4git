@@ -2,6 +2,12 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.4.1 — 2026-08-12
+
+- Fixed **New Branch from Here** by replacing the unreliable Electron browser prompt with an in-app branch dialog.
+- Suggests a local branch name when starting from a remote-tracking branch and validates the name/start point before switching.
+- 修复 **New Branch from Here** 无响应：改用应用内窗口，并为远程分支建议本地名称、提前验证名称和起点。
+
 ## 0.4.0 — 2026-08-12
 
 ### English

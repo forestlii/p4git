@@ -92,6 +92,11 @@ interface PreferenceDraft {
   appearance: AppearanceSettings
 }
 
+interface BranchEditorState {
+  source: string
+  name: string
+}
+
 interface LogEntry {
   id: number
   time: string
@@ -189,6 +194,7 @@ export default function App(): React.JSX.Element {
   const [pushOpen, setPushOpen] = useState(false)
   const [shelvesOpen, setShelvesOpen] = useState(false)
   const [branchComparison, setBranchComparison] = useState<BranchComparison>()
+  const [branchEditor, setBranchEditor] = useState<BranchEditorState>()
   const [operationState, setOperationState] = useState<OperationState>({ conflicts: 0, canContinue: false, canAbort: false })
   const [entriesByPath, setEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({})
   const [depotEntriesByPath, setDepotEntriesByPath] = useState<Record<string, WorkspaceEntry[]>>({})
@@ -980,10 +986,18 @@ export default function App(): React.JSX.Element {
 
   const createBranchFromRef = useCallback(async (ref: string) => {
     if (!repository) return
-    const name = window.prompt(`New branch from ${ref}:`, '')?.trim()
-    if (!name) return
-    await perform('branch', `git switch -c ${name} ${ref}`, () => window.p4git.checkout({ repoPath: repository.root, branch: name, create: true, startPoint: ref }), `Created ${name} from ${ref}.`)
-  }, [perform, repository])
+    const remote = branches.find((branch) => branch.name === ref)?.remote
+    const baseName = remote && ref.includes('/') ? ref.slice(ref.indexOf('/') + 1) : ''
+    const suggested = baseName && branches.some((branch) => !branch.remote && branch.name === baseName) ? `${baseName}-work` : baseName
+    setBranchEditor({ source: ref, name: suggested })
+  }, [branches, repository])
+
+  const saveBranch = useCallback(async () => {
+    if (!repository || !branchEditor?.name.trim()) return
+    const name = branchEditor.name.trim()
+    const success = await perform('branch', `git switch -c ${name} ${branchEditor.source}`, () => window.p4git.checkout({ repoPath: repository.root, branch: name, create: true, startPoint: branchEditor.source }), `Created and switched to ${name} from ${branchEditor.source}.`)
+    if (success) setBranchEditor(undefined)
+  }, [branchEditor, perform, repository])
 
   const abortGitOperation = useCallback(async (operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert') => {
     if (!repository || !window.confirm(`Abort the current Git ${operation} operation?`)) return
@@ -1248,8 +1262,7 @@ export default function App(): React.JSX.Element {
     if (action === 'switch-branch') {
       await perform('checkout', `git switch ${branch.name}`, () => window.p4git.checkout({ repoPath: repository.root, branch: branch.name }), `Switched to ${branch.name}.`)
     } else if (action === 'new-branch') {
-      const name = window.prompt(`New branch from ${branch.name}:`, '')?.trim()
-      if (name) await perform('branch', `git switch -c ${name} ${branch.name}`, () => window.p4git.checkout({ repoPath: repository.root, branch: name, create: true, startPoint: branch.name }), `Created ${name} from ${branch.name}.`)
+      await createBranchFromRef(branch.name)
     } else if (action === 'copy-path') {
       await copyText(branch.name)
     } else if (action === 'git-merge') {
@@ -1268,7 +1281,7 @@ export default function App(): React.JSX.Element {
         await performGitAt(repository.root, 'git-delete-branch', `branch -d -- ${branch.name}`, () => window.p4git.deleteBranch(repository.root, branch.name), `Deleted branch ${branch.name}.`)
       }
     }
-  }, [copyText, createTagAt, mergeRef, perform, performGitAt, rebaseOnto, repository])
+  }, [copyText, createBranchFromRef, createTagAt, mergeRef, perform, performGitAt, rebaseOnto, repository])
 
   const amendLastCommit = useCallback(async () => {
     if (!repository || !history[0]) return
@@ -1321,7 +1334,7 @@ export default function App(): React.JSX.Element {
       case 'fetch': void fetchRemote(); break
       case 'push': setPushOpen(true); break
       case 'settings': openPreferences(); break
-      case 'about': window.alert('P4Git 0.4.0\nA P4V-style desktop workflow for Git.\nMIT License'); break
+      case 'about': window.alert('P4Git 0.4.1\nA P4V-style desktop workflow for Git.\nMIT License'); break
       case 'git-stash': void stashChanges(); break
       case 'git-stash-pop': if (repository && window.confirm('Pop the latest Git stash into the current workspace?')) void performGitAt(repository.root, 'git-stash-pop', 'stash pop stash@{0}', () => window.p4git.applyStash(repository.root, 'stash@{0}', true), 'Popped the latest Git stash.'); break
       case 'git-stashes': void showStashes(); break
@@ -1646,6 +1659,7 @@ export default function App(): React.JSX.Element {
       {reflogView && <ReflogDialog view={reflogView} onClose={() => setReflogView(undefined)} onCopy={(entry) => void copyText(entry.hash)} />}
       {preferencesOpen && <PreferencesDialog health={health} value={preferenceDraft} onChange={setPreferenceDraft} onChooseGit={() => void chooseGit()} onChooseDiff={() => void chooseDiffTool()} onChooseMerge={() => void chooseMergeTool()} onCancel={() => setPreferencesOpen(false)} onSave={() => void savePreferences()} busy={busy === 'preferences'} />}
       {changelistEditor && <ChangelistDialog value={changelistEditor} onChange={setChangelistEditor} onCancel={() => setChangelistEditor(undefined)} onSave={() => void saveChangelist()} busy={busy === 'new-changelist' || busy === 'edit-changelist'} />}
+      {branchEditor && <BranchDialog value={branchEditor} onChange={setBranchEditor} onCancel={() => setBranchEditor(undefined)} onSave={() => void saveBranch()} busy={busy === 'branch'} />}
       {conflictsView && <ConflictResolver repoPath={repository.root} conflicts={conflictsView} onClose={() => setConflictsView(undefined)} onChanged={async () => { const next = await window.p4git.getConflicts(repository.root); setConflictsView(next); await refresh() }} />}
       {gitlabOpen && gitlabConfig && <GitLabDialog repoPath={repository.root} branch={repository.branch} branches={branches} config={gitlabConfig} overview={gitlabView} onClose={() => setGitlabOpen(false)} onUpdate={(config, overview) => { setGitlabConfig(config); setGitlabView(overview) }} />}
       {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} onComplete={(path) => { setCloneOpen(false); void openRepository(path) }} />}
@@ -2078,6 +2092,11 @@ function PreferencesDialog({ health, value, onChange, onChooseGit, onChooseDiff,
 
 function ChangelistDialog({ value, onChange, onCancel, onSave, busy }: { value: ChangelistEditorState; onChange: (value: ChangelistEditorState) => void; onCancel: () => void; onSave: () => void; busy: boolean }): React.JSX.Element {
   return <div className="modal-backdrop"><section className="changelist-dialog" role="dialog" aria-modal="true" aria-label={value.id ? 'Edit Changelist' : 'New Changelist'}><div className="modal-title"><FileText size={16} /><strong>{value.id ? 'Edit Changelist' : 'New Changelist'}</strong><button onClick={onCancel}><X size={16} /></button></div><div className="modal-body"><label htmlFor="changelist-name">Name:</label><input id="changelist-name" autoFocus maxLength={120} value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} placeholder="Feature or task name" /><label htmlFor="changelist-description">Description:</label><textarea id="changelist-description" maxLength={2000} value={value.description} onChange={(event) => onChange({ ...value, description: event.target.value })} placeholder="What changes belong in this changelist?" /></div><div className="modal-actions"><button onClick={onCancel}>Cancel</button><button className="primary-classic" onClick={onSave} disabled={!value.name.trim() || busy}>{busy && <LoaderCircle className="spin" size={14} />}{value.id ? 'Save' : 'Create'}</button></div></section></div>
+}
+
+function BranchDialog({ value, onChange, onCancel, onSave, busy }: { value: BranchEditorState; onChange: (value: BranchEditorState) => void; onCancel: () => void; onSave: () => void; busy: boolean }): React.JSX.Element {
+  const invalid = !value.name.trim() || value.name.startsWith('-') || /[\s~^:?*[\\]/.test(value.name) || value.name.includes('..') || value.name.endsWith('/') || value.name.endsWith('.') || value.name.endsWith('.lock')
+  return <div className="modal-backdrop"><section className="branch-dialog" role="dialog" aria-modal="true" aria-label="New Branch from Here"><div className="modal-title"><GitBranch size={16} /><strong>New Branch from Here</strong><button onClick={onCancel}><X size={16} /></button></div><div className="modal-body"><label>Start point:</label><div className="branch-source"><GitBranch size={15} /><code title={value.source}>{value.source}</code></div><label htmlFor="new-branch-name">New local branch name:</label><input id="new-branch-name" autoFocus value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter' && !invalid && !busy) onSave() }} placeholder="feature/name" /><p>The new local branch starts at the selected branch/ref and becomes the current workspace branch.</p>{invalid && value.name && <p className="preference-error">Enter a valid Git branch name without spaces or Git ref-control characters.</p>}</div><div className="modal-actions"><button onClick={onCancel}>Cancel</button><button className="primary-classic" onClick={onSave} disabled={invalid || busy}>{busy && <LoaderCircle className="spin" size={14} />}Create &amp; Switch</button></div></section></div>
 }
 
 function SubmitDialog({ name, staged, message, amend, onMessage, onCancel, onSubmit, busy, conflicts }: { name: string; staged: FileChange[]; message: string; amend: boolean; onMessage: (value: string) => void; onCancel: () => void; onSubmit: () => void; busy: boolean; conflicts: boolean }): React.JSX.Element {

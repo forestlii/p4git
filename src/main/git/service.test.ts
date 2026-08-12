@@ -270,6 +270,15 @@ describe('GitService Git-native operations', () => {
     await subject.pushTo(preview)
     expect((await git(remote, 'show-ref', '--heads', 'main')).trim()).toContain('refs/heads/main')
 
+    await subject.checkout(root, 'from-remote', true, 'team/main')
+    expect((await git(root, 'branch', '--show-current')).trim()).toBe('from-remote')
+    expect((await git(root, 'rev-parse', 'from-remote')).trim()).toBe((await git(root, 'rev-parse', 'team/main')).trim())
+    await subject.checkout(root, 'main')
+    await subject.checkout(root, 'from-main', true, 'main')
+    expect((await git(root, 'branch', '--show-current')).trim()).toBe('from-main')
+    await expect(subject.checkout(root, 'bad branch', true, 'main')).rejects.toThrow('分支名称无效')
+    await subject.checkout(root, 'main')
+
     await git(root, 'switch', '-c', 'feature')
     await writeFile(join(root, 'feature.txt'), 'feature\n', 'utf8')
     await git(root, 'add', 'feature.txt')

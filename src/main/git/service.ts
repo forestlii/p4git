@@ -803,10 +803,14 @@ export class GitService {
 
   async checkout(repoPath: string, branch: string, create = false, startPoint?: string): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
-    const trimmed = branch.trim()
-    if (!trimmed || trimmed.startsWith('-')) throw new Error('分支名称无效。')
+    const trimmed = this.safeRef(branch)
+    if (create) await this.run(root, ['check-ref-format', `refs/heads/${trimmed}`]).catch(() => { throw new Error(`分支名称无效：${trimmed}`) })
     const args = create ? ['switch', '-c', trimmed] : ['switch', trimmed]
-    if (create && startPoint) args.push(this.safeRef(startPoint))
+    if (create && startPoint) {
+      const source = this.safeRef(startPoint)
+      await this.run(root, ['rev-parse', '--verify', `${source}^{commit}`]).catch(() => { throw new Error(`找不到起始分支或提交：${source}`) })
+      args.push(source)
+    }
     await this.run(root, args)
   }
 
