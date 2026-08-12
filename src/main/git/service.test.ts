@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -134,6 +134,170 @@ describe('GitService Git-native operations', () => {
     expect((await git(root, 'diff', '--cached', '--name-only')).trim()).toBe('selected.txt')
 
     const deleted = await subject.deleteChangelist(root, changelist.id)
-    expect(deleted).toEqual({ changelists: [], assignments: {} })
+    expect(deleted).toEqual({ changelists: [], assignments: {}, shelves: [] })
   }, 15_000)
+
+  it('fast-forwards Get Latest and reports diverged branches without changing local history', async () => {
+    const root = await createRepository()
+    const remote = await mkdtemp(join(tmpdir(), 'p4git-service-'))
+    const peer = await mkdtemp(join(tmpdir(), 'p4git-service-'))
+    temporaryRepositories.push(remote, peer)
+    await git(remote, 'init', '--bare')
+    await git(root, 'remote', 'add', 'origin', remote)
+    await git(root, 'push', '--set-upstream', 'origin', 'main')
+    await git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+    await git(peer, 'clone', remote, '.')
+    await git(peer, 'config', 'user.name', 'P4Git Peer')
+    await git(peer, 'config', 'user.email', 'peer@example.invalid')
+
+    await writeFile(join(peer, 'remote.txt'), 'remote one\n', 'utf8')
+    await git(peer, 'add', 'remote.txt')
+    await git(peer, 'commit', '-m', 'remote one')
+    await git(peer, 'push')
+
+    const subject = service()
+    await expect(subject.pull(root)).resolves.toMatchObject({
+      outcome: 'fast-forwarded',
+      upstream: 'origin/main',
+      ahead: 0,
+      behind: 1
+    })
+
+    await writeFile(join(root, 'local.txt'), 'local\n', 'utf8')
+    await git(root, 'add', 'local.txt')
+    await git(root, 'commit', '-m', 'local work')
+    await writeFile(join(peer, 'remote.txt'), 'remote two\n', 'utf8')
+    await git(peer, 'add', 'remote.txt')
+    await git(peer, 'commit', '-m', 'remote two')
+    await git(peer, 'push')
+
+    const headBefore = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await expect(subject.pull(root)).resolves.toMatchObject({
+      outcome: 'diverged',
+      upstream: 'origin/main',
+      ahead: 1,
+      behind: 1
+    })
+    expect((await git(root, 'rev-parse', 'HEAD')).trim()).toBe(headBefore)
+  }, 20_000)
+
+  it('builds a parent-aware revision graph and reverts a submitted change', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await writeFile(join(root, 'tracked.txt'), 'changed by submitted commit\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'change to undo')
+    const change = (await git(root, 'rev-parse', 'HEAD')).trim()
+
+    const graph = await subject.graph(root)
+    expect(graph[0]).toMatchObject({ hash: change, subject: 'change to undo' })
+    expect(graph[0].parents).toHaveLength(1)
+
+    await subject.revertCommits(root, [change])
+    expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('initial\n')
+    expect((await git(root, 'log', '-1', '--format=%s')).trim()).toContain('Revert')
+  }, 15_000)
+
+  it('loads three-way conflict content, resolves it, and continues the merge', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'tracked.txt'), 'feature version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'feature edit')
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'tracked.txt'), 'main version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'main edit')
+    await expect(git(root, 'merge', 'feature')).rejects.toBeDefined()
+
+    const conflicts = await subject.conflicts(root)
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: 'merge', conflicts: 1, canContinue: false, canAbort: true })
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0]).toMatchObject({
+      path: 'tracked.txt',
+      binary: false,
+      base: 'initial\n',
+      ours: 'main version\n',
+      theirs: 'feature version\n'
+    })
+
+    await subject.resolveConflict(root, 'tracked.txt', 'manual', 'combined version\n')
+    expect(await subject.conflicts(root)).toHaveLength(0)
+    await expect(subject.operationState(root)).resolves.toMatchObject({ operation: 'merge', conflicts: 0, canContinue: true })
+    await subject.continueOperation(root)
+    expect(await readFile(join(root, 'tracked.txt'), 'utf8')).toBe('combined version\n')
+    expect((await subject.graph(root))[0].parents).toHaveLength(2)
+  }, 20_000)
+
+  it('shelves and unshelves one local changelist while restoring assignments', async () => {
+    const root = await createRepository()
+    const subject = service()
+    const created = await subject.createChangelist(root, 'UI task', 'shelf round trip')
+    const id = created.changelists[0].id
+    await writeFile(join(root, 'tracked.txt'), 'shelved edit\n', 'utf8')
+    await writeFile(join(root, 'new.txt'), 'new shelf file\n', 'utf8')
+    await subject.assignChangelist(root, ['tracked.txt', 'new.txt'], id)
+
+    const shelved = await subject.shelveChangelist(root, id, 'UI task', 'shelf round trip', ['tracked.txt', 'new.txt'])
+    expect(shelved.shelves).toHaveLength(1)
+    expect((await subject.summary(root)).changes).toHaveLength(0)
+    expect(shelved.assignments).toEqual({})
+
+    const restored = await subject.unshelve(root, shelved.shelves[0].hash)
+    expect(restored.shelves).toHaveLength(0)
+    expect(restored.assignments).toMatchObject({ 'tracked.txt': id, 'new.txt': id })
+    expect((await subject.summary(root)).changes.map((change) => change.path)).toEqual(['new.txt', 'tracked.txt'])
+  }, 20_000)
+
+  it('manages remotes, previews pushes, compares and renames branches, and amends commits', async () => {
+    const root = await createRepository()
+    const remote = await mkdtemp(join(tmpdir(), 'p4git-service-'))
+    temporaryRepositories.push(remote)
+    await git(remote, 'init', '--bare')
+    const subject = service()
+    await subject.saveRemote(root, undefined, 'team', remote)
+    expect(await subject.remotes(root)).toMatchObject([{ name: 'team', fetchUrl: remote, pushUrl: remote }])
+
+    const preview = await subject.pushPreview({ repoPath: root, remote: 'team', localBranch: 'main', remoteBranch: 'main', setUpstream: true })
+    expect(preview.commits.map((commit) => commit.subject)).toEqual(['initial'])
+    await subject.pushTo(preview)
+    expect((await git(remote, 'show-ref', '--heads', 'main')).trim()).toContain('refs/heads/main')
+
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'feature.txt'), 'feature\n', 'utf8')
+    await git(root, 'add', 'feature.txt')
+    await git(root, 'commit', '-m', 'feature work')
+    const comparison = await subject.compareBranch(root, 'main')
+    expect(comparison.outgoing.map((commit) => commit.subject)).toEqual(['feature work'])
+    await subject.renameBranch(root, 'feature', 'renamed-feature')
+    expect((await git(root, 'branch', '--show-current')).trim()).toBe('renamed-feature')
+    await subject.commit(root, 'amended feature work', true)
+    expect((await git(root, 'log', '-1', '--format=%s')).trim()).toBe('amended feature work')
+    await subject.deleteRemote(root, 'team')
+    expect(await subject.remotes(root)).toEqual([])
+  }, 25_000)
+
+  it('initializes and clones repositories into explicitly selected directories', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'p4git-service-'))
+    temporaryRepositories.push(parent)
+    const initialized = join(parent, 'initialized')
+    const cloned = join(parent, 'cloned')
+    const subject = service()
+
+    await expect(subject.initRepository({ directory: initialized, initialBranch: 'develop' })).resolves.toBe(initialized)
+    expect((await git(initialized, 'branch', '--show-current')).trim()).toBe('develop')
+    await expect(subject.summary(initialized)).resolves.toMatchObject({ root: initialized, branch: 'develop', changes: [] })
+    await expect(subject.history(initialized)).resolves.toEqual([])
+    await expect(subject.graph(initialized)).resolves.toEqual([])
+    await expect(subject.listTree(initialized, 'HEAD')).resolves.toEqual([])
+    await writeFile(join(initialized, 'README.md'), '# Initialized\n', 'utf8')
+    await git(initialized, 'config', 'user.name', 'P4Git Test')
+    await git(initialized, 'config', 'user.email', 'p4git@example.invalid')
+    await git(initialized, 'add', 'README.md')
+    await git(initialized, 'commit', '-m', 'initial')
+
+    await expect(subject.cloneRepository({ url: initialized, parentDirectory: parent, folderName: 'cloned' })).resolves.toBe(cloned)
+    expect(await readFile(join(cloned, 'README.md'), 'utf8')).toBe('# Initialized\n')
+  }, 20_000)
 })

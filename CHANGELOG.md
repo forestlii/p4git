@@ -2,6 +2,52 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.3.0 — 2026-08-12
+
+### English
+
+- Completed the daily Git workflow with automatic conflict detection and Resolve launch after Merge, Rebase, Cherry-pick, Revert, or Get Latest failures.
+- Added repository-local Shelve/Unshelve for named changelists, preserving their file assignments when restored.
+- Added remote management, a push preview/target dialog, branch rename, and Incoming/Outgoing branch comparison.
+- Added Amend Last Commit with an explicit history-rewrite warning and operation-state indicators for conflicts and Continue readiness.
+- Expanded real-repository integration coverage to 19 tests.
+
+### 简体中文
+
+- 补齐日常 Git 主流程：Merge、Rebase、Cherry-pick、Revert 或 Get Latest 失败后自动检测冲突并打开 Resolve。
+- 新增仓库本地 Changelist Shelve/Unshelve，恢复时保留原文件归组。
+- 新增 Remote 管理、Push 目标与提交预览窗口、分支重命名，以及 Incoming/Outgoing 分支比较。
+- 新增 Amend Last Commit，并明确提示改写历史；状态栏显示冲突和可 Continue 状态。
+- 真实仓库集成测试扩展至 19 项。
+
+## 0.2.0 — 2026-08-12
+
+### English
+
+- Completed P4V-style navigation: editable location bar, history, bookmarks, workspace selector, tree sorting/filtering, advanced filter panel, sortable columns, and expandable Submitted rows.
+- Added cancellable Git subprocesses, repository Clone/Init, visual three-way conflict resolution, operation Continue, and safe submitted-commit Revert.
+- Replaced the branch-only Stream view with a parent-aware multi-lane Revision/Stream Graph.
+- Connected Jobs to GitLab Issues and added an encrypted-token GitLab panel for merge requests, pipelines, issues, external links, and merge-request creation.
+- Added integration coverage for Clone/Init, conflicts, merge continuation, commit reverts, revision parents, and self-hosted GitLab remote parsing.
+
+### 简体中文
+
+- 补齐 P4V 风格导航：可编辑位置栏、历史、书签、Workspace 选择、树排序/过滤、高级过滤、可排序表头和 Submitted 行展开。
+- 新增可取消 Git 子进程、仓库 Clone/Init、可视化三方冲突解决、继续进行中的操作，以及安全撤销已提交 commit。
+- 将仅分支列表的 Stream 视图升级为使用真实 parent 关系的多轨 Revision/Stream Graph。
+- 将 Jobs 映射到 GitLab Issues，并新增使用系统加密保存 Token 的 GitLab 面板，可查看 MR、Pipeline、Issue、打开链接和创建 MR。
+- 新增 Clone/Init、冲突、合并继续、提交撤销、版本父节点及自建 GitLab 远端解析的集成测试。
+
+## 0.1.4 — 2026-08-12
+
+### English
+
+- Fixed Get Latest on diverged branches: it now fetches first, fast-forwards when safe, and presents an explicit Merge/Rebase/Cancel decision with ahead/behind counts instead of failing with `Not possible to fast-forward`.
+
+### 简体中文
+
+- 修复分支分叉时 Get Latest 直接报 `Not possible to fast-forward`：现在会先 Fetch，可安全快进时自动更新；发生分叉时显示 ahead/behind 数量，并明确提供 Merge、Rebase、Cancel 选择。
+
 ## 0.1.3 — 2026-08-11
 
 ### English

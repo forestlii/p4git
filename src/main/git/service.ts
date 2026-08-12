@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { access, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,18 +10,30 @@ import type {
   AbortOperation,
   BlameLine,
   BranchInfo,
+  BranchComparison,
   ChangelistState,
   CommitInfo,
   DiffRequest,
   ExternalDiffRequest,
   ExternalDiffSource,
+  ConflictFile,
+  ConflictResolution,
+  CloneRequest,
+  GraphCommit,
   GitHealth,
+  InitRequest,
   LocalChangelist,
+  OperationState,
+  PullResult,
+  PushPreview,
+  PushRequest,
+  RemoteInfo,
   RepositorySummary,
   ReflogEntry,
   ResetMode,
   RevisionFile,
   StashEntry,
+  ShelfInfo,
   WorkspaceEntry
 } from '../../shared/types'
 import { SettingsStore } from '../settings'
@@ -68,6 +81,7 @@ async function canExecute(filePath: string): Promise<boolean> {
 
 export class GitService {
   private gitPath?: string
+  private readonly activeProcesses = new Set<ChildProcess>()
 
   constructor(private readonly settings: SettingsStore) {}
 
@@ -287,6 +301,39 @@ export class GitService {
     await this.run(root, ['add', '--', ...safePaths])
   }
 
+  async shelveChangelist(repoPath: string, id: string | undefined, name: string, description: string, paths: string[]): Promise<ChangelistState> {
+    const root = await this.repositoryRoot(repoPath)
+    const safePaths = paths.map((item) => this.safeRelativePath(root, item))
+    if (!safePaths.length) throw new Error('Changelist 中没有可 Shelve 的文件。')
+    const before = await this.run(root, ['rev-parse', '--verify', 'refs/stash']).then((value) => value.trim()).catch(() => '')
+    await this.run(root, ['stash', 'push', '--include-untracked', '-m', `P4Git shelf: ${name}`, '--', ...safePaths])
+    const hash = (await this.run(root, ['rev-parse', '--verify', 'refs/stash'])).trim()
+    if (!hash || hash === before) throw new Error('没有产生新的 Shelf；所选文件可能没有可保存的改动。')
+    const state = await this.readChangelists(root)
+    const shelf: ShelfInfo = { hash, name, description, changelistId: id, paths: safePaths, createdAt: new Date().toISOString() }
+    state.shelves = [shelf, ...state.shelves.filter((item) => item.hash !== hash)]
+    for (const path of safePaths) delete state.assignments[path]
+    await this.writeChangelists(root, state)
+    return state
+  }
+
+  async unshelve(repoPath: string, hash: string): Promise<ChangelistState> {
+    const root = await this.repositoryRoot(repoPath)
+    const safeHash = this.safeRef(hash)
+    const state = await this.readChangelists(root)
+    const shelf = state.shelves.find((item) => item.hash === safeHash)
+    if (!shelf) throw new Error('Shelf 元数据不存在，可能已在其他 Git 客户端中删除。')
+    await this.run(root, ['stash', 'apply', '--index', safeHash]).catch(() => this.run(root, ['stash', 'apply', safeHash]))
+    const stash = (await this.stashes(root)).find((item) => item.hash === safeHash)
+    if (stash) await this.run(root, ['stash', 'drop', stash.ref])
+    if (shelf.changelistId && state.changelists.some((item) => item.id === shelf.changelistId)) {
+      for (const path of shelf.paths) state.assignments[path] = shelf.changelistId
+    }
+    state.shelves = state.shelves.filter((item) => item.hash !== safeHash)
+    await this.writeChangelists(root, state)
+    return state
+  }
+
   async stashes(repoPath: string): Promise<StashEntry[]> {
     const root = await this.repositoryRoot(repoPath)
     const output = await this.run(root, [
@@ -360,21 +407,42 @@ export class GitService {
     await this.run(root, ['branch', '-d', '--', this.safeRef(branch)])
   }
 
+  async renameBranch(repoPath: string, oldName: string, newName: string): Promise<void> {
+    const root = await this.repositoryRoot(repoPath)
+    const previous = this.safeRef(oldName)
+    const next = this.safeRef(newName)
+    await this.run(root, ['check-ref-format', `refs/heads/${next}`])
+    await this.run(root, ['branch', '-m', previous, next])
+  }
+
+  async compareBranch(repoPath: string, branch: string): Promise<BranchComparison> {
+    const root = await this.repositoryRoot(repoPath)
+    const selected = this.safeRef(branch)
+    const current = (await this.run(root, ['branch', '--show-current'])).trim()
+    if (!current) throw new Error('Detached HEAD 无法执行分支比较。')
+    const [incoming, outgoing] = await Promise.all([
+      this.logRange(root, `${current}..${selected}`),
+      this.logRange(root, `${selected}..${current}`)
+    ])
+    return { current, selected, incoming, outgoing }
+  }
+
   async abort(repoPath: string, operation: AbortOperation): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
-    if (!['merge', 'rebase', 'cherry-pick'].includes(operation)) throw new Error('Git 操作类型无效。')
+    if (!['merge', 'rebase', 'cherry-pick', 'revert'].includes(operation)) throw new Error('Git 操作类型无效。')
     await this.run(root, [operation, '--abort'])
   }
 
-  async commit(repoPath: string, message: string): Promise<string> {
+  async commit(repoPath: string, message: string, amend = false): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
     const trimmed = message.trim()
     if (!trimmed) throw new Error('提交说明不能为空。')
-    return this.run(root, ['commit', '-m', trimmed])
+    return this.run(root, ['commit', ...(amend ? ['--amend'] : []), '-m', trimmed])
   }
 
   async history(repoPath: string, limit = 100): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
+    if (!await this.hasHead(root)) return []
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500)
     const output = await this.run(root, [
       'log',
@@ -390,6 +458,7 @@ export class GitService {
 
   async fileHistory(repoPath: string, filePath: string, limit = 100): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
+    if (!await this.hasHead(root)) return []
     const safePath = filePath === '.' || !filePath ? '.' : this.safeRelativePath(root, filePath)
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500)
     const formatArgs = [
@@ -479,6 +548,79 @@ export class GitService {
     return this.run(root, ['show', '--format=', '--no-ext-diff', '--no-color', this.safeRef(hash)])
   }
 
+  async graph(repoPath: string, limit = 300): Promise<GraphCommit[]> {
+    const root = await this.repositoryRoot(repoPath)
+    if (!await this.hasHead(root)) return []
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 2_000)
+    const output = await this.run(root, [
+      'log', '--all', '--topo-order', `-${safeLimit}`, '--date=iso-strict',
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1f%P%x1e'
+    ])
+    return output.split('\x1e').map((record) => record.trim()).filter(Boolean).map((record) => {
+      const [hash, shortHash, author, email, date, subject, decoration = '', parents = ''] = record.split('\x1f')
+      return {
+        hash, shortHash, author, email, date, subject,
+        refs: decoration.split(',').map((ref) => ref.trim()).filter(Boolean),
+        parents: parents.split(' ').filter(Boolean)
+      }
+    })
+  }
+
+  async conflicts(repoPath: string): Promise<ConflictFile[]> {
+    const root = await this.repositoryRoot(repoPath)
+    const paths = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z']))
+      .split('\0').filter(Boolean)
+    return Promise.all(paths.map(async (filePath) => {
+      const safePath = this.safeRelativePath(root, filePath)
+      const [base, ours, theirs] = await Promise.all([1, 2, 3].map((stage) =>
+        this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0))
+      ))
+      const binary = [base, ours, theirs].some((content) => content.includes(0))
+      return {
+        path: safePath,
+        base: binary ? '' : base.toString('utf8'),
+        ours: binary ? '' : ours.toString('utf8'),
+        theirs: binary ? '' : theirs.toString('utf8'),
+        binary
+      }
+    }))
+  }
+
+  async resolveConflict(repoPath: string, filePath: string, resolution: ConflictResolution, content?: string): Promise<void> {
+    const root = await this.repositoryRoot(repoPath)
+    const safePath = this.safeRelativePath(root, filePath)
+    if (resolution === 'ours' || resolution === 'theirs') {
+      await this.run(root, ['checkout', `--${resolution}`, '--', safePath])
+    } else if (resolution === 'manual') {
+      await writeFile(join(root, safePath), content ?? '', 'utf8')
+    } else {
+      throw new Error('冲突解决方式无效。')
+    }
+    await this.run(root, ['add', '--', safePath])
+  }
+
+  async continueOperation(repoPath: string): Promise<string> {
+    const root = await this.repositoryRoot(repoPath)
+    const gitPath = async (name: string): Promise<boolean> => {
+      const target = (await this.run(root, ['rev-parse', '--git-path', name])).trim()
+      return stat(isAbsolute(target) ? target : resolve(root, target)).then(() => true).catch(() => false)
+    }
+    if (await gitPath('rebase-merge') || await gitPath('rebase-apply')) {
+      return this.run(root, ['-c', 'core.editor=true', 'rebase', '--continue'])
+    }
+    if (await gitPath('CHERRY_PICK_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'cherry-pick', '--continue'])
+    if (await gitPath('REVERT_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'revert', '--continue'])
+    if (await gitPath('MERGE_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'merge', '--continue'])
+    throw new Error('当前没有可继续的 Merge、Rebase 或 Cherry-pick。')
+  }
+
+  async revertCommits(repoPath: string, refs: string[]): Promise<string> {
+    const root = await this.repositoryRoot(repoPath)
+    const safeRefs = refs.map((ref) => this.safeRef(ref))
+    if (!safeRefs.length) throw new Error('请选择至少一个要撤销的提交。')
+    return this.run(root, ['revert', '--no-edit', ...safeRefs])
+  }
+
   async branches(repoPath: string): Promise<BranchInfo[]> {
     const root = await this.repositoryRoot(repoPath)
     const output = await this.run(root, [
@@ -529,6 +671,7 @@ export class GitService {
   async listTree(repoPath: string, ref: string, relativePath = ''): Promise<WorkspaceEntry[]> {
     const root = await this.repositoryRoot(repoPath)
     const safeRef = this.safeRef(ref)
+    if (safeRef === 'HEAD' && !await this.hasHead(root)) return []
     const safeDirectory = relativePath
       ? this.safeRelativePath(root, relativePath)
       : ''
@@ -572,9 +715,32 @@ export class GitService {
     await this.run(root, ['fetch', '--all', '--prune'])
   }
 
-  async pull(repoPath: string): Promise<void> {
+  async pull(repoPath: string): Promise<PullResult> {
     const root = await this.repositoryRoot(repoPath)
-    await this.run(root, ['pull', '--ff-only'])
+    await this.run(root, ['fetch', '--all', '--prune'])
+    const upstream = (await this.run(root, [
+      'rev-parse',
+      '--abbrev-ref',
+      '--symbolic-full-name',
+      '@{upstream}'
+    ]).catch(() => '')).trim()
+    if (!upstream) throw new Error('当前分支没有 upstream。请先 Push 并设置远程跟踪分支。')
+
+    const counts = (await this.run(root, ['rev-list', '--left-right', '--count', `HEAD...${upstream}`]))
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+    const ahead = counts[0]
+    const behind = counts[1]
+    if (!Number.isSafeInteger(ahead) || !Number.isSafeInteger(behind)) {
+      throw new Error('无法判断本地分支与远程分支的同步状态。')
+    }
+    if (ahead > 0 && behind > 0) return { outcome: 'diverged', upstream, ahead, behind }
+    if (behind > 0) {
+      await this.run(root, ['merge', '--ff-only', upstream])
+      return { outcome: 'fast-forwarded', upstream, ahead, behind }
+    }
+    return { outcome: ahead > 0 ? 'ahead' : 'up-to-date', upstream, ahead, behind }
   }
 
   async push(repoPath: string): Promise<void> {
@@ -593,10 +759,124 @@ export class GitService {
     await this.run(root, ['push', '--set-upstream', 'origin', branch])
   }
 
+  async remotes(repoPath: string): Promise<RemoteInfo[]> {
+    const root = await this.repositoryRoot(repoPath)
+    const names = (await this.run(root, ['remote'])).split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+    return Promise.all(names.map(async (name) => ({
+      name,
+      fetchUrl: (await this.run(root, ['remote', 'get-url', name])).trim(),
+      pushUrl: (await this.run(root, ['remote', 'get-url', '--push', name]).catch(() => '')).trim()
+    })))
+  }
+
+  async saveRemote(repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string): Promise<RemoteInfo[]> {
+    const root = await this.repositoryRoot(repoPath)
+    const cleanName = this.safeRemoteName(name)
+    const cleanFetch = this.safeRemoteUrl(fetchUrl)
+    const cleanPush = pushUrl?.trim() ? this.safeRemoteUrl(pushUrl) : cleanFetch
+    if (!previousName) {
+      await this.run(root, ['remote', 'add', cleanName, cleanFetch])
+    } else {
+      const previous = this.safeRemoteName(previousName)
+      if (previous !== cleanName) await this.run(root, ['remote', 'rename', previous, cleanName])
+      await this.run(root, ['remote', 'set-url', cleanName, cleanFetch])
+    }
+    await this.run(root, ['remote', 'set-url', '--push', cleanName, cleanPush])
+    return this.remotes(root)
+  }
+
+  async deleteRemote(repoPath: string, name: string): Promise<RemoteInfo[]> {
+    const root = await this.repositoryRoot(repoPath)
+    await this.run(root, ['remote', 'remove', this.safeRemoteName(name)])
+    return this.remotes(root)
+  }
+
+  async pushPreview(request: PushRequest): Promise<PushPreview> {
+    const root = await this.repositoryRoot(request.repoPath)
+    const remote = this.safeRemoteName(request.remote)
+    const localBranch = this.safeRef(request.localBranch)
+    const remoteBranch = this.safeRef(request.remoteBranch)
+    const remoteUrl = (await this.run(root, ['remote', 'get-url', '--push', remote])).trim()
+    const remoteRef = `refs/remotes/${remote}/${remoteBranch}`
+    const exists = await this.run(root, ['show-ref', '--verify', '--quiet', remoteRef]).then(() => true).catch(() => false)
+    const commits = await this.logRange(root, exists ? `${remote}/${remoteBranch}..${localBranch}` : localBranch, 200)
+    return { ...request, repoPath: root, remote, localBranch, remoteBranch, remoteUrl, commits }
+  }
+
+  async pushTo(request: PushRequest): Promise<void> {
+    const root = await this.repositoryRoot(request.repoPath)
+    const remote = this.safeRemoteName(request.remote)
+    const localBranch = this.safeRef(request.localBranch)
+    const remoteBranch = this.safeRef(request.remoteBranch)
+    await this.run(root, ['push', ...(request.setUpstream ? ['--set-upstream'] : []), remote, `${localBranch}:${remoteBranch}`])
+  }
+
+  async operationState(repoPath: string): Promise<OperationState> {
+    const root = await this.repositoryRoot(repoPath)
+    const exists = async (name: string): Promise<boolean> => {
+      const target = (await this.run(root, ['rev-parse', '--git-path', name])).trim()
+      return stat(isAbsolute(target) ? target : resolve(root, target)).then(() => true).catch(() => false)
+    }
+    let operation: OperationState['operation']
+    if (await exists('rebase-merge') || await exists('rebase-apply')) operation = 'rebase'
+    else if (await exists('CHERRY_PICK_HEAD')) operation = 'cherry-pick'
+    else if (await exists('REVERT_HEAD')) operation = 'revert'
+    else if (await exists('MERGE_HEAD')) operation = 'merge'
+    const conflicts = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z'])).split('\0').filter(Boolean).length
+    return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation) }
+  }
+
+  async cancelOperations(): Promise<number> {
+    const processes = [...this.activeProcesses]
+    for (const child of processes) {
+      if (!child.pid) continue
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
+      } else {
+        child.kill('SIGTERM')
+      }
+    }
+    return processes.length
+  }
+
+  async cloneRepository(request: CloneRequest): Promise<string> {
+    const parent = resolve(request.parentDirectory)
+    if (!isAbsolute(parent)) throw new Error('Clone 目标必须是绝对路径。')
+    const url = request.url.trim()
+    if (!url || url.startsWith('-') || /[\0\r\n]/.test(url)) throw new Error('仓库 URL 无效。')
+    const args = ['clone', '--progress', url]
+    if (request.folderName?.trim()) {
+      const folder = request.folderName.trim()
+      if (folder.includes('/') || folder.includes('\\') || folder === '.' || folder === '..') throw new Error('目标文件夹名称无效。')
+      args.push(folder)
+    }
+    await this.run(parent, args)
+    const inferred = request.folderName?.trim() || basename(url.replace(/\/$/, '').replace(/\.git$/, ''))
+    const root = resolve(parent, inferred)
+    await this.settings.rememberRepository(root)
+    return root
+  }
+
+  async initRepository(request: InitRequest): Promise<string> {
+    const directory = resolve(request.directory)
+    const branch = request.initialBranch.trim() || 'main'
+    if (!isAbsolute(directory)) throw new Error('Init 目录必须是绝对路径。')
+    if (branch.startsWith('-') || /[\0\r\n]/.test(branch)) throw new Error('初始分支名称无效。')
+    await mkdir(directory, { recursive: true })
+    const gitPath = await this.resolveGitPath()
+    await this.runRaw(gitPath, ['init', '-b', branch, directory], directory)
+    await this.settings.rememberRepository(directory)
+    return directory
+  }
+
   private async repositoryRoot(repoPath: string): Promise<string> {
     if (!repoPath || !isAbsolute(repoPath)) throw new Error('仓库路径必须是绝对路径。')
     const root = (await this.run(resolve(repoPath), ['rev-parse', '--show-toplevel'])).trim()
     return normalize(root)
+  }
+
+  private async hasHead(root: string): Promise<boolean> {
+    return this.run(root, ['rev-parse', '--verify', 'HEAD']).then(() => true).catch(() => false)
   }
 
   private safeRelativePath(root: string, filePath: string): string {
@@ -614,6 +894,28 @@ export class GitService {
       throw new Error('Git 引用无效。')
     }
     return trimmed
+  }
+
+  private safeRemoteName(name: string): string {
+    const value = name.trim()
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) throw new Error('Remote 名称无效。')
+    return value
+  }
+
+  private safeRemoteUrl(url: string): string {
+    const value = url.trim()
+    if (!value || value.startsWith('-') || /[\0\r\n]/.test(value)) throw new Error('Remote URL 无效。')
+    return value
+  }
+
+  private async logRange(root: string, range: string, limit = 100): Promise<CommitInfo[]> {
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500)
+    const output = await this.run(root, [
+      'log', `-${safeLimit}`, '--date=iso-strict',
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e',
+      this.safeRef(range)
+    ])
+    return parseLog(output)
   }
 
   private changelistName(name: string): string {
@@ -641,9 +943,15 @@ export class GitService {
       const assignments = Object.fromEntries(Object.entries(parsed.assignments ?? {}).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string' && validIds.has(entry[1])
       ))
-      return { changelists, assignments }
+      const shelves: ShelfInfo[] = Array.isArray(parsed.shelves)
+        ? parsed.shelves.filter((item): item is ShelfInfo => Boolean(
+            item && typeof item.hash === 'string' && typeof item.name === 'string' &&
+            typeof item.description === 'string' && Array.isArray(item.paths) && typeof item.createdAt === 'string'
+          ))
+        : []
+      return { changelists, assignments, shelves }
     } catch {
-      return { changelists: [], assignments: {} }
+      return { changelists: [], assignments: {}, shelves: [] }
     }
   }
 
@@ -689,13 +997,14 @@ export class GitService {
   private async runBuffer(cwd: string, args: string[]): Promise<Buffer> {
     const gitPath = await this.resolveGitPath()
     return new Promise<Buffer>((resolveOutput, rejectOutput) => {
-      execFile(gitPath, ['-c', 'core.quotepath=false', ...args], {
+      const child = execFile(gitPath, ['-c', 'core.quotepath=false', ...args], {
         cwd,
         encoding: 'buffer',
         windowsHide: true,
         maxBuffer,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       }, (error, stdout, stderr) => {
+        this.activeProcesses.delete(child)
         if (!error) {
           resolveOutput(stdout)
           return
@@ -703,24 +1012,32 @@ export class GitService {
         const detail = stderr?.toString().trim() || stdout?.toString().trim() || error.message
         rejectOutput(new Error(detail))
       })
+      this.activeProcesses.add(child)
     })
   }
 
   private async runRaw(executable: string, args: string[], cwd?: string): Promise<string> {
-    try {
-      const result = await execFileAsync(executable, args, {
-        cwd,
-        encoding: 'utf8',
-        windowsHide: true,
-        maxBuffer,
+    return new Promise<string>((resolveOutput, rejectOutput) => {
+      const child = spawn(executable, args, {
+        cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
       })
-      return result.stdout
-    } catch (error) {
-      const failure = error as Error & { stderr?: string; stdout?: string }
-      const detail = failure.stderr?.trim() || failure.stdout?.trim() || failure.message
-      throw new Error(detail)
-    }
+      this.activeProcesses.add(child)
+      const stdout: Buffer[] = []
+      const stderr: Buffer[] = []
+      let size = 0
+      child.stdout?.on('data', (chunk: Buffer) => { size += chunk.length; if (size <= maxBuffer) stdout.push(chunk) })
+      child.stderr?.on('data', (chunk: Buffer) => { size += chunk.length; if (size <= maxBuffer) stderr.push(chunk) })
+      child.once('error', (error) => { this.activeProcesses.delete(child); rejectOutput(error) })
+      child.once('close', (code, signal) => {
+        this.activeProcesses.delete(child)
+        const out = Buffer.concat(stdout).toString('utf8')
+        const err = Buffer.concat(stderr).toString('utf8')
+        if (size > maxBuffer) rejectOutput(new Error('Git 输出超过 16 MB 限制。'))
+        else if (code === 0) resolveOutput(out)
+        else rejectOutput(new Error((err.trim() || out.trim() || (signal ? `Git operation cancelled (${signal}).` : `Git exited with code ${code}.`))))
+      })
+    })
   }
 
   private async resolveGitPath(): Promise<string> {

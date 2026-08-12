@@ -14,7 +14,9 @@ P4Git deliberately follows the P4V desktop structure instead of a conventional G
 - **Details pane** — Details, Files, Jobs, and Diff Summary below the main table.
 - **Log and status bar** — executed operations, results, current path, upstream, and readiness.
 
-**Timelapse** uses Git blame for line-level history. **Revgraph** opens the Git branch view in **Stream Graph**. **Cancel** remains disabled only because the current synchronous Git operations cannot yet be cancelled safely.
+**Timelapse** uses Git blame for line-level history. **Revgraph** opens a **Stream Graph** rendered from real commit-parent relationships. **Cancel** is enabled while a Git command is running and terminates the process tree started by P4Git.
+
+The location field is editable and navigates on Enter; adjacent controls expose location history and bookmarks. Use the Workspace selector for recent repositories, click column headings to sort, and use the separate tree and table filters to narrow views.
 
 ## Git Mapping
 
@@ -23,14 +25,14 @@ P4Git keeps P4V action names while using Git underneath:
 | P4Git / P4V action | Git operation |
 |---|---|
 | Refresh | Re-read `git status`, history, branches, and the current directory |
-| Get Latest | `git pull --ff-only` |
+| Get Latest | Fetch, automatic fast-forward, or an explicit Merge/Rebase choice when diverged |
 | Checkout | Move a tracked Workspace edit to Ready to submit; or retrieve a selected Depot revision and make it ready to submit; clean Git files require no lock |
 | Add | Stage a selected untracked file with `git add` |
 | Delete | Remove a tracked file with `git rm` and stage the deletion |
 | Revert | Restore both the index and working copy to `HEAD`; an added file remains on disk |
 | Diff | Compare the worktree, index, selected Depot ref, or a submitted commit |
 | Timelapse | Show per-line author, commit, and date using `git blame --line-porcelain` |
-| Revgraph | Open the Git branch mapping in Stream Graph |
+| Revgraph | Open a multi-lane Revision/Stream Graph from commit parents and Git branches |
 | Submit | Create a local Git commit from Ready to submit |
 | Connection > Fetch | `git fetch --all --prune` |
 | Connection > Push | Push the current branch and create its upstream when needed |
@@ -63,6 +65,8 @@ P4Git adds a repository-local changelist layer on top of Git:
 Choose **New Changelist...** in Pending or **Actions > New Changelist...** to create a list. Use `Ctrl`, `Shift`, or `Ctrl+A` to select multiple pending files, then drag them onto a group or right-click and use **Move to Changelist**. The submenu's **New Changelist...** command creates a list and immediately moves the entire selection into it. Right-click a named list to submit, edit, delete, or move all of its files to Ready. Deleting a list never deletes files: its assigned changes return to **Default changelist**.
 
 Named-list assignments are stored inside the current repository at `.git/p4git/changelists.json`. They survive application restarts, remain local to that clone, and cannot enter a Git commit. Renames and descriptions are saved there as well.
+
+Right-click a local changelist and choose **Shelve Changelist** to save its files in a local Git stash and clean them from the workspace. **Tools > Git > View Shelves** restores both the changes and their original changelist assignments. Shelves are clone-local and are not uploaded automatically.
 
 Moving a file to **Ready to submit** stages it. Moving a staged file to Default or a named list unstages it without discarding working-copy content. A partially staged file can appear in Ready and a local list because the staged and working-tree versions have different diffs. Status marks are `M` (modified), `A` (added), `D` (deleted), `R` (renamed), `C` (copied), `?` (untracked), and `!` (conflicted).
 
@@ -99,7 +103,7 @@ Conflicted files disable submission. The result is a local Git commit; it is not
 
 The **Submitted** table shows up to 100 recent Git commits using P4V-style columns: Change, Date Submitted, Submitted By, and Description. Selecting a row displays its full hash, author, date, and subject in **Details**.
 
-Right-click a commit to view its changed-file list, open its full diff against the previous revision, copy its complete hash, Cherry-pick it, create a branch or tag, or reset the current branch. Interactive rebase is not yet included.
+The disclosure arrow expands a commit's changed files in place. Context actions expose files, full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
 
 ## History
 
@@ -109,7 +113,13 @@ The table lists Git revisions with an approximate file revision number, commit h
 
 ## Stream Graph
 
-**Stream Graph** maps Git branches into the P4V navigation position. It lists local and remote branches, marks the current branch, creates branches, and switches between existing local branches. Right-click a branch to switch or create a new branch from that exact starting point. Remote branches are read-only but may be used as a new local branch's starting point.
+**Stream Graph** occupies the equivalent P4V location for Git topology. Its table draws lanes and merge edges from commit parents; the sidebar lists local and remote branches and marks the current branch. Branch context actions can switch or create a branch from the selected ref. Remote branches are read-only but can seed a local branch.
+
+## Resolving conflicts
+
+Open **Tools > Git > Resolve Conflicts** for the three-way resolver. The selected file shows Base, Ours, Theirs, and an editable Result. Accept either side or save an edited result; after every file is resolved, **Continue Operation** resumes the Merge, Rebase, or Cherry-pick. Binary conflicts can select Ours or Theirs but cannot be edited as text. Abort actions remain under **Tools > Git**.
+
+If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git opens Resolve automatically. The status bar shows the operation, conflict count, and when Continue is ready.
 
 ## Native Context Menus
 
@@ -131,18 +141,28 @@ Git blocks a switch that would overwrite local changes; P4Git displays that erro
 
 ## Workspaces
 
-The **Workspaces** tab lists the last workspace and up to eight recent repositories. Double-click a row to open it. Use **File > Open Workspace** to browse for another existing Git repository.
+**Workspaces** lists recent repositories. Double-click a row to open it. Use **File > Open Workspace** for an existing repository, **File > Clone Repository** for a remote URL and parent folder, or **File > Init Repository** to create a repository with a selected initial branch.
 
 Use **Tools > Git Settings** to select Git for Windows or the `git.exe` bundled with UGit. P4Git verifies the executable with `git --version` before saving it.
 
 ## Remote Synchronization
 
-- **Get Latest** uses fast-forward-only pull. If local and remote histories diverge, choose an appropriate merge or rebase outside P4Git 0.1.
+- **Get Latest** fetches first. It fast-forwards automatically when safe; if local and remote histories diverge, it displays the number of commits on each side and asks you to Merge, Rebase, or Cancel.
 - **Connection > Fetch** updates remote-tracking refs without changing local files.
 - **Connection > Push** runs a normal push, or pushes to `origin` and sets upstream for a new local branch.
 
+**Connection > Push** first opens a preview where you select the remote, local/remote branch mapping, and upstream behavior, then inspect outgoing commits. **Tools > Git > Manage Remotes** adds, renames, edits Fetch/Push URLs, or removes remotes. Branch context menus include Rename and **Compare with Current**, which lists Incoming and Outgoing commits separately.
+
+**Tools > Git > Amend Last Commit** changes the latest message and includes currently staged files. Amend changes the commit ID and should not be used on a commit already shared with teammates.
+
 Terminal prompts are disabled. HTTPS credentials must already be available through Git Credential Manager, and SSH authentication must already work through the configured key or agent.
+
+## GitLab merge requests, CI, and Jobs
+
+Open **Tools > Git > GitLab**. P4Git infers common HTTPS, SSH, and `git@host:group/project.git` origins, while still allowing manual server/project settings. Private projects usually need a GitLab Personal Access Token. The token is used only in the main process, encrypted for the current operating-system account, and never returned as plaintext to the React renderer.
+
+The panel lists open merge requests, recent pipelines, and issues, opens entries in the browser, and creates a merge request from the current branch to a selected target. The main **Jobs** detail tab maps P4V Jobs to GitLab Issues. Pipeline job logs, approvals, and automatic commit/issue linking are not part of this version.
 
 ## Operations Deliberately Not Automated
 
-P4Git 0.1 does not silently merge, rebase, delete untracked files, discard staged content, resolve conflicts, bypass Git hooks, or emulate Perforce file locking. These operations require context that the client should not guess.
+P4Git does not silently merge, rebase, delete untracked files, discard staged content, choose a conflict side, bypass Git hooks, or emulate Perforce file locking. These operations require context that the client should not guess.

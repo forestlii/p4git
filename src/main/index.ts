@@ -4,19 +4,26 @@ import { access } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type {
   AbortOperation,
+  CloneRequest,
+  ConflictResolution,
   CheckoutRequest,
   ContextMenuAction,
   ContextMenuRequest,
   DiffRequest,
   ExternalDiffRequest,
   MenuAction,
+  PullResult,
+  PushRequest,
+  InitRequest,
   ResetMode
 } from '../shared/types'
 import { GitService } from './git/service'
 import { SettingsStore } from './settings'
+import { GitLabService } from './gitlab'
 
 let git: GitService
 let settings: SettingsStore
+let gitlab: GitLabService
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -60,7 +67,12 @@ function createApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
-      submenu: [action('Open Workspace...', 'open-workspace', 'CmdOrCtrl+O'), { type: 'separator' }, { role: 'quit' }]
+      submenu: [
+        action('Open Workspace...', 'open-workspace', 'CmdOrCtrl+O'),
+        action('Clone Repository...', 'clone'),
+        action('Init Repository...', 'init'),
+        { type: 'separator' }, { role: 'quit' }
+      ]
     },
     {
       label: 'Edit',
@@ -98,19 +110,25 @@ function createApplicationMenu(): void {
             action('Stash Changes...', 'git-stash'),
             action('Pop Latest Stash', 'git-stash-pop'),
             action('View Stashes...', 'git-stashes'),
+            action('View Shelves...', 'git-shelves'),
             { type: 'separator' },
             action('View Reflog...', 'git-reflog'),
+            action('GitLab...', 'gitlab'),
+            action('Resolve Conflicts...', 'resolve-conflicts'),
+            action('Manage Remotes...', 'git-remotes'),
             { type: 'separator' },
             action('Merge Branch...', 'git-merge'),
             action('Rebase onto Branch...', 'git-rebase'),
             action('Create Tag...', 'git-tag'),
+            action('Amend Last Commit...', 'git-amend'),
             { type: 'separator' },
             {
               label: 'Abort Operation',
               submenu: [
                 action('Abort Merge', 'git-abort-merge'),
                 action('Abort Rebase', 'git-abort-rebase'),
-                action('Abort Cherry-pick', 'git-abort-cherry-pick')
+                action('Abort Cherry-pick', 'git-abort-cherry-pick'),
+                action('Abort Revert', 'git-abort-revert')
               ]
             }
           ]
@@ -242,6 +260,7 @@ function contextMenuTemplate(
         item('Diff Against Previous Revision', 'commit-diff'),
         separator,
         item('Copy Commit Hash', 'copy-hash'),
+        item('Revert This Commit...', 'revert-commit'),
         separator,
         gitMenu([
           item('Cherry-pick', 'git-cherry-pick'),
@@ -269,6 +288,8 @@ function contextMenuTemplate(
           item('Merge into Current Branch...', 'git-merge', !request.current),
           item('Rebase Current Branch onto This...', 'git-rebase', !request.current),
           item('Create Tag at Branch...', 'git-tag'),
+          item('Compare with Current...', 'git-compare-branch', !request.current),
+          item('Rename Local Branch...', 'git-rename-branch', !request.remote),
           item('Delete Local Branch...', 'git-delete-branch', !request.current && !request.remote)
         ])
       ]
@@ -280,7 +301,7 @@ function contextMenuTemplate(
         separator,
         gitMenu([
           item('Fetch', 'git-fetch'),
-          item('Pull (fast-forward only)', 'git-pull'),
+          item('Get Latest...', 'git-pull'),
           item('Push', 'git-push'),
           separator,
           item('Stash Changes...', 'git-stash'),
@@ -299,6 +320,7 @@ function contextMenuTemplate(
         separator,
         item('New Changelist...', 'new-changelist'),
         item('Edit Changelist...', 'edit-changelist', custom),
+        item('Shelve Changelist...', 'shelve-changelist', !request.empty && id !== '__ready__'),
         item('Delete Changelist...', 'delete-changelist', custom)
       ]
     }
@@ -354,6 +376,36 @@ function registerIpc(): void {
     return result.canceled ? undefined : result.filePaths[0]
   })
 
+  ipcMain.handle('dialog:choose-divergence-strategy', async (event, result: PullResult) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      type: 'warning' as const,
+      title: 'Remote changes require a decision',
+      message: `Current branch and ${result.upstream} have diverged.`,
+      detail: `Local has ${result.ahead} commit(s) not on the remote; the remote has ${result.behind} commit(s) not local.\n\nMerge preserves both histories and may create a merge commit. Rebase replays local commits on the remote and rewrites their commit IDs. Uncommitted changes may need to be stashed first.`,
+      buttons: ['Merge', 'Rebase', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    }
+    const selection = owner
+      ? await dialog.showMessageBox(owner, options)
+      : await dialog.showMessageBox(options)
+    return selection.response === 0 ? 'merge' : selection.response === 1 ? 'rebase' : 'cancel'
+  })
+  ipcMain.handle('dialog:choose-clone-parent', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: OpenDialogOptions = { title: '选择 Clone 的父目录', properties: ['openDirectory', 'createDirectory'] }
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    return result.canceled ? undefined : result.filePaths[0]
+  })
+  ipcMain.handle('dialog:choose-init-directory', async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: OpenDialogOptions = { title: '选择或创建 Git 仓库目录', properties: ['openDirectory', 'createDirectory'] }
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+    return result.canceled ? undefined : result.filePaths[0]
+  })
+
   ipcMain.handle('settings:get', () => settings.get())
   ipcMain.handle('settings:save-diff-tool', async (_event, executable?: string, argumentsTemplate?: string) => {
     const cleanPath = executable?.trim() || undefined
@@ -380,8 +432,8 @@ function registerIpc(): void {
   ipcMain.handle('git:discard', (_event, repoPath: string, paths: string[]) =>
     git.discard(repoPath, paths)
   )
-  ipcMain.handle('git:commit', (_event, repoPath: string, message: string) =>
-    git.commit(repoPath, message)
+  ipcMain.handle('git:commit', (_event, repoPath: string, message: string, amend?: boolean) =>
+    git.commit(repoPath, message, amend)
   )
   ipcMain.handle('git:history', (_event, repoPath: string, limit?: number) =>
     git.history(repoPath, limit)
@@ -409,6 +461,13 @@ function registerIpc(): void {
   ipcMain.handle('git:commit-diff', (_event, repoPath: string, hash: string) =>
     git.commitDiff(repoPath, hash)
   )
+  ipcMain.handle('git:graph', (_event, repoPath: string, limit?: number) => git.graph(repoPath, limit))
+  ipcMain.handle('git:conflicts', (_event, repoPath: string) => git.conflicts(repoPath))
+  ipcMain.handle('git:resolve-conflict', (_event, repoPath: string, filePath: string, resolution: ConflictResolution, content?: string) =>
+    git.resolveConflict(repoPath, filePath, resolution, content)
+  )
+  ipcMain.handle('git:continue-operation', (_event, repoPath: string) => git.continueOperation(repoPath))
+  ipcMain.handle('git:revert-commits', (_event, repoPath: string, refs: string[]) => git.revertCommits(repoPath, refs))
   ipcMain.handle('git:mark-delete', (_event, repoPath: string, paths: string[]) =>
     git.markDelete(repoPath, paths)
   )
@@ -434,6 +493,10 @@ function registerIpc(): void {
   ipcMain.handle('git:changelist-prepare', (_event, repoPath: string, paths: string[]) =>
     git.prepareChangelist(repoPath, paths)
   )
+  ipcMain.handle('git:changelist-shelve', (_event, repoPath: string, id: string | undefined, name: string, description: string, paths: string[]) =>
+    git.shelveChangelist(repoPath, id, name, description, paths)
+  )
+  ipcMain.handle('git:changelist-unshelve', (_event, repoPath: string, hash: string) => git.unshelve(repoPath, hash))
   ipcMain.handle('git:stashes', (_event, repoPath: string) => git.stashes(repoPath))
   ipcMain.handle('git:stash', (_event, repoPath: string, message: string, paths?: string[]) =>
     git.stash(repoPath, message, paths)
@@ -461,6 +524,8 @@ function registerIpc(): void {
   ipcMain.handle('git:delete-branch', (_event, repoPath: string, branch: string) =>
     git.deleteBranch(repoPath, branch)
   )
+  ipcMain.handle('git:rename-branch', (_event, repoPath: string, oldName: string, newName: string) => git.renameBranch(repoPath, oldName, newName))
+  ipcMain.handle('git:compare-branch', (_event, repoPath: string, branch: string) => git.compareBranch(repoPath, branch))
   ipcMain.handle('git:abort', (_event, repoPath: string, operation: AbortOperation) =>
     git.abort(repoPath, operation)
   )
@@ -470,6 +535,38 @@ function registerIpc(): void {
   ipcMain.handle('git:fetch', (_event, repoPath: string) => git.fetch(repoPath))
   ipcMain.handle('git:pull', (_event, repoPath: string) => git.pull(repoPath))
   ipcMain.handle('git:push', (_event, repoPath: string) => git.push(repoPath))
+  ipcMain.handle('git:remotes', (_event, repoPath: string) => git.remotes(repoPath))
+  ipcMain.handle('git:remote-save', (_event, repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string) => git.saveRemote(repoPath, previousName, name, fetchUrl, pushUrl))
+  ipcMain.handle('git:remote-delete', (_event, repoPath: string, name: string) => git.deleteRemote(repoPath, name))
+  ipcMain.handle('git:push-preview', (_event, request: PushRequest) => git.pushPreview(request))
+  ipcMain.handle('git:push-to', (_event, request: PushRequest) => git.pushTo(request))
+  ipcMain.handle('git:operation-state', (_event, repoPath: string) => git.operationState(repoPath))
+  ipcMain.handle('git:cancel', () => git.cancelOperations())
+  ipcMain.handle('git:clone', (_event, request: CloneRequest) => git.cloneRepository(request))
+  ipcMain.handle('git:init', (_event, request: InitRequest) => git.initRepository(request))
+  ipcMain.handle('settings:save-navigation', (_event, bookmarks: string[], locationHistory: string[]) =>
+    settings.update({ bookmarks: bookmarks.slice(0, 50), locationHistory: locationHistory.slice(0, 20) })
+  )
+  ipcMain.handle('gitlab:config', async (_event, repoPath: string) => {
+    const summary = await git.summary(repoPath)
+    return gitlab.config(summary.root, summary.remoteUrl)
+  })
+  ipcMain.handle('gitlab:save-config', async (_event, repoPath: string, baseUrl: string, projectPath: string, token?: string, clearToken?: boolean) => {
+    const summary = await git.summary(repoPath)
+    return gitlab.save(summary.root, baseUrl, projectPath, token, clearToken)
+  })
+  ipcMain.handle('gitlab:overview', async (_event, repoPath: string) => {
+    const summary = await git.summary(repoPath)
+    return gitlab.overview(summary.root, summary.remoteUrl)
+  })
+  ipcMain.handle('gitlab:create-mr', async (_event, repoPath: string, title: string, sourceBranch: string, targetBranch: string, description?: string) => {
+    const summary = await git.summary(repoPath)
+    return gitlab.createMergeRequest(summary.root, summary.remoteUrl, title, sourceBranch, targetBranch, description)
+  })
+  ipcMain.handle('shell:open-external', (_event, url: string) => {
+    if (!/^https?:\/\//i.test(url)) throw new Error('只允许打开 HTTP(S) 地址。')
+    return shell.openExternal(url)
+  })
   ipcMain.handle('shell:reveal-repository', async (_event, repoPath: string) => {
     const summary = await git.summary(repoPath)
     await shell.openPath(summary.root)
@@ -500,6 +597,7 @@ app.whenReady().then(() => {
   app.setAppUserModelId('dev.p4git.client')
   settings = new SettingsStore()
   git = new GitService(settings)
+  gitlab = new GitLabService()
   registerIpc()
   createApplicationMenu()
   createWindow()

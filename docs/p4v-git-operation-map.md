@@ -15,7 +15,7 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Depot | Committed tree from a selected upstream, `HEAD`, local branch, or remote branch | Implemented |
 | Workspace | Git working tree on disk, including untracked files | Implemented |
 | Refresh | Reload status, current tree, commit history, and branches | Implemented |
-| Get Latest | Top level uses `git pull --ff-only`; Depot paths restore from the selected ref | Implemented |
+| Get Latest | Top level fetches and fast-forwards safely, prompting for Merge/Rebase when diverged; Depot paths restore from the selected ref | Implemented |
 | Checkout / Open for edit | `git add` an existing edit; restore and stage a Depot revision; clean files require no lock | Implemented, non-locking |
 | Add | `git add` an untracked file | Implemented |
 | Delete | `git rm`, or record a deletion already made on disk | Implemented |
@@ -23,10 +23,13 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Diff | Working tree, index, Depot ref, and commit diffs | Implemented, textual |
 | External Diff tool | User-configured executable with argument templates; Beyond Compare defaults and built-in fallback | Implemented for file diffs |
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
-| Revision Graph / Stream Graph | List, create, and switch local/remote Git branches | Implemented, simplified |
+| Revision Graph / Stream Graph | Multi-lane topology from commit parents plus local/remote branch operations | Implemented |
+| Resolve | Read Base/Ours/Theirs Git index stages, accept a side or edit a merge result, then Continue | Implemented |
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
+| Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |
 | Submit | Create a local commit from the Git index without automatic Push | Implemented |
-| Submitted | Git log with context actions for files, diff, and hash copy | Implemented |
+| Submitted | Git log with expandable files, diffs, hash copy, and safe `git revert` | Implemented |
+| Jobs | GitLab Issues | Implemented when a GitLab project is configured |
 | File / folder History | Persistent path-linked History tab backed by Git log, revision restore, and Previous/HEAD diff | Implemented |
 | Workspaces | Recently opened local Git repositories | Implemented |
 | Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more | Implemented |
@@ -39,13 +42,12 @@ These are not represented by misleading no-op behavior. They remain disabled or 
 - Perforce opened-by state, exclusive Checkout, and server file locking. Git LFS locks are an optional approximation only.
 - Server-numbered, shared changelists and server ownership state. P4Git supports multiple named local changelists, but their metadata is clone-local under `.git/p4git` and is not synchronized.
 - Server-side Shelve / Unshelve semantics. Git stash is local by default and only an approximation.
-- Jobs, Fixes, and submit association without GitLab Issues, GitHub Issues, or another server integration.
-- Stream parent/child topology, Merge/Copy workflows, and Resolve. P4Git currently maps only the branch list.
+- Fixes and submit association have no portable Git equivalent; Jobs can now map to GitLab Issues.
+- Perforce Stream parent/child rules and Merge/Copy workflows remain distinct; Git branches and commit parents provide only a topology approximation.
 - Centralized Labels. Git tags are similar, but their permissions and mutability differ.
 - Workspace Views and client mappings. Git sparse-checkout can approximate only part of this model.
 - Server administration such as permissions, users, protection tables, and Obliterate.
-- Full P4V Time-lapse playback and rich Revision Graph. External tools are implemented for file diffs, but folder/commit-wide external comparison is not yet provided.
-- **Cancel**: the current Git process wrapper does not yet expose a safe cancellation handle, so the control is visible but disabled.
+- Full P4V Time-lapse playback. External tools are implemented for file diffs, but folder/commit-wide external comparison is not yet provided.
 
 ## Git capabilities with no obvious P4V-core location
 
@@ -56,11 +58,13 @@ P4Git now applies the P4V-first placement policy: purely Git-native operations l
 - Merge, Rebase, Cherry-pick, and matching Abort operations.
 - Soft/Mixed/Hard Reset, lightweight Tags, and branch creation from a commit/ref.
 - File-level Stage, Unstage, and Stash; safe branch deletion; and per-Workspace Fetch/Pull/Push.
+- Clone/Init under File, plus GitLab merge-request creation and MR/Pipeline/Issue browsing.
+- Remote management, Push commit previews, branch rename and Incoming/Outgoing comparison, and Amend.
 
 Still to be implemented:
 
-- Clone, Init, remote management, and a dedicated prune UI.
-- Amend and interactive Rebase.
+- Remote management and a dedicated prune UI.
+- Interactive Rebase.
 - Submodules, worktrees, sparse-checkout, and `.gitignore` editing.
 - Git LFS and LFS locks.
-- GitLab Merge Requests / GitHub Pull Requests, CI status, and issue linking.
+- GitHub Pull Requests and deeper GitLab job-log, approval, and issue-linking workflows.

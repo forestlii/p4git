@@ -27,7 +27,7 @@ P4Git 是一款 Windows 桌面客户端，它将接近 P4V 的工作区与变更
 
 ## 当前范围
 
-P4Git 0.1 操作已经存在的仓库，并将身份验证、凭据存储、Hooks、Filters 和网络协议交给所选的 Git 可执行程序处理。目前暂不提供 Clone、凭据弹窗、冲突编辑器和未跟踪文件删除功能。
+P4Git 可以打开、Clone 或 Init 仓库，并将 Git 网络身份验证、Git 凭据、Hooks、Filters 和协议处理交给所选的 Git 可执行程序。GitLab API Token 由 P4Git 使用系统加密单独保存；未跟踪文件仍不会被隐式删除。
 
 ## 源码结构
 

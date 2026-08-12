@@ -8,7 +8,7 @@ Install Git for Windows, or select a compatible `git.exe` from the welcome page 
 
 ## The Selected Folder Is Not a Repository
 
-P4Git uses `git rev-parse --show-toplevel`. Select a directory inside a cloned or initialized repository. Repository cloning is not part of version 0.1.
+P4Git uses `git rev-parse --show-toplevel`. Select a directory inside a cloned or initialized repository, or use **File > Clone Repository / Init Repository**.
 
 ## Fetch, Pull, or Push Reports an Authentication Error
 
@@ -20,9 +20,9 @@ P4Git sets `GIT_TERMINAL_PROMPT=0`, so it never opens a hidden terminal prompt.
 
 Restart P4Git after changing environment-level credential or SSH agent configuration.
 
-## Pull Says “Not possible to fast-forward”
+## Get Latest Finds Diverged Branches
 
-Local and upstream histories diverged. P4Git intentionally uses `--ff-only`. Inspect the commits and perform an explicit merge or rebase using your approved team workflow, then refresh P4Git.
+P4Git fetches without modifying local history, shows the local and remote commit counts, and asks you to **Merge**, **Rebase**, or **Cancel**. Merge preserves both histories and may create a merge commit. Rebase produces a linear history but rewrites local commit IDs. If either operation is blocked by workspace changes, move them to a Changelist and stash or submit them first.
 
 ## Commit Requires User Name or Email
 
@@ -48,7 +48,7 @@ Read the error shown by P4Git, correct the files or message, and commit again. P
 
 ## Windows Shows an Unknown Publisher Warning
 
-The initial release is not code-signed. Download only from the official release page, compare the published SHA-256 checksum, and follow your organization’s software policy. Do not suppress SmartScreen globally.
+The current binaries are not code-signed. Download only from the official release page, compare the published SHA-256 checksum, and follow your organization’s software policy. Do not suppress SmartScreen globally.
 
 ## Portable Settings Remain After Deleting the Executable
 

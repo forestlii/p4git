@@ -20,6 +20,12 @@ export class SettingsStore {
         diffToolPath: typeof parsed.diffToolPath === 'string' ? parsed.diffToolPath : undefined,
         diffToolArguments: typeof parsed.diffToolArguments === 'string' ? parsed.diffToolArguments : undefined,
         lastRepository: typeof parsed.lastRepository === 'string' ? parsed.lastRepository : undefined,
+        bookmarks: Array.isArray(parsed.bookmarks)
+          ? parsed.bookmarks.filter((item): item is string => typeof item === 'string').slice(0, 50)
+          : [],
+        locationHistory: Array.isArray(parsed.locationHistory)
+          ? parsed.locationHistory.filter((item): item is string => typeof item === 'string').slice(0, 20)
+          : [],
         recentRepositories: Array.isArray(parsed.recentRepositories)
           ? parsed.recentRepositories.filter((item): item is string => typeof item === 'string')
           : []
