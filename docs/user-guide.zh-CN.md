@@ -78,7 +78,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ### 外部 Diff 工具
 
-通过 **Tools > Preferences...** 配置 Beyond Compare 或其他比较程序。选择可执行文件，并按工具需要修改参数模板。P4Git 为 Beyond Compare 提供的默认模板是：
+通过 **Tools > Preferences...** 配置 Beyond Compare 或其他比较程序。该页面还可单独配置外部三方 Merge 工具，以及经典/浅色/深色主题、界面密度、字号和工具栏文字。P4Git 为 Beyond Compare 提供的默认模板是：
 
 ```text
 /solo /readonly /lefttitle={leftTitle} /righttitle={rightTitle} "{left}" "{right}"
@@ -109,7 +109,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 在 Depot 或 Workspace 中选择文件或目录，通过右键 **File History** 打开历史；也可以使用 **View > History** 查看当前选中路径。P4Git 会打开与该路径联动的常驻 **History** 页签，不再使用临时弹窗。
 
-表格显示近似文件版本号、commit hash、日期、作者和说明。选择某个版本后，下方会显示 commit 详情；双击可与上一版本比较。版本右键菜单还提供 **Get This Revision**、**Diff Against Previous Revision**、**Diff Against Head**、**View Submitted Change** 和 **Copy Commit Hash**。恢复版本只修改选中的工作区路径，并会先要求确认。
+表格显示近似文件版本号、commit hash、日期、作者和说明。选择某个版本后，下方会显示 commit 详情；双击可与上一版本比较。**Get This Revision** 会打开预览窗口，也可输入分支、Tag、完整/短哈希或日期。执行前会显示解析出的提交及变更文件，再恢复选中的工作区路径。
 
 ## Stream Graph
 
@@ -117,9 +117,15 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ## Resolve 冲突
 
-通过 **Tools > Git > Resolve Conflicts** 打开三方解决器。文件列表右侧同时显示 Base、Ours、Theirs 和可编辑 Result。可以接受 Ours/Theirs，或编辑 Result 后标记为已解决；全部解决后使用 **Continue Operation** 继续 Merge、Rebase 或 Cherry-pick。二进制冲突不能手工编辑，但仍可选择 Ours 或 Theirs。Abort 操作仍位于 **Tools > Git**。
+通过 **Tools > Git > Resolve Conflicts** 打开三方解决器。文件列表右侧同时显示 Base、Ours、Theirs 和当前工作区 Result。标准冲突块可逐块选择 Ours、Theirs 或 Both，Result 也可继续手工编辑；配置外部三方 Merge 后可直接启动并写回结果。二进制冲突使用整文件 Ours/Theirs 或外部工具。全部解决后使用 **Continue Operation** 继续当前操作。
 
 Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会自动打开 Resolve。状态栏持续显示当前操作、冲突数，以及是否已经可以 Continue。
+
+## 多选、布局、任务与 LFS 锁
+
+Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
+
+Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态，**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
 
 ## 原生右键菜单
 

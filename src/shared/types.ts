@@ -133,6 +133,7 @@ export interface ConflictFile {
   base: string
   ours: string
   theirs: string
+  result: string
   binary: boolean
 }
 
@@ -288,6 +289,9 @@ export type ContextMenuAction =
   | 'diff-head'
   | 'show-submitted'
   | 'revert-commit'
+  | 'lfs-lock'
+  | 'lfs-unlock'
+  | 'lfs-locks'
   | `move-changelist:${string}`
 
 export interface ContextMenuRequest {
@@ -342,6 +346,7 @@ export type MenuAction =
   | 'init'
   | 'new-changelist'
   | 'history'
+  | 'lfs-locks'
 
 export interface AppSettings {
   gitPath?: string
@@ -351,9 +356,75 @@ export interface AppSettings {
   lastRepository?: string
   bookmarks?: string[]
   locationHistory?: string[]
+  mergeToolPath?: string
+  mergeToolArguments?: string
+  appearance?: AppearanceSettings
+}
+
+export type ColorTheme = 'classic' | 'light' | 'dark'
+
+export interface AppearanceSettings {
+  theme: ColorTheme
+  density: 'compact' | 'comfortable'
+  fontScale: number
+  showToolbarLabels: boolean
+  workspacePaneWidth: number
+  detailPaneHeight: number
+  logPaneHeight: number
+  tableColumnWidths: Record<string, number[]>
+}
+
+export const DEFAULT_APPEARANCE: AppearanceSettings = {
+  theme: 'classic',
+  density: 'compact',
+  fontScale: 1,
+  showToolbarLabels: true,
+  workspacePaneWidth: 292,
+  detailPaneHeight: 260,
+  logPaneHeight: 140,
+  tableColumnWidths: {}
 }
 
 export const DEFAULT_DIFF_TOOL_ARGUMENTS = '/solo /readonly /lefttitle={leftTitle} /righttitle={rightTitle} "{left}" "{right}"'
+export const DEFAULT_MERGE_TOOL_ARGUMENTS = '"{theirs}" "{ours}" "{base}" "{result}" /lefttitle="Theirs" /righttitle="Ours" /centertitle="Base" /outputtitle="Result"'
+
+export interface RevisionResolution {
+  input: string
+  hash: string
+  shortHash: string
+  subject: string
+  author: string
+  date: string
+  refs: string[]
+  files: RevisionFile[]
+}
+
+export interface LfsStatus {
+  installed: boolean
+  repositoryEnabled: boolean
+  version?: string
+  error?: string
+  locks: LfsLock[]
+}
+
+export interface LfsLock {
+  id: string
+  path: string
+  owner: string
+  lockedAt?: string
+  mine: boolean
+}
+
+export interface TaskProgress {
+  id: string
+  label: string
+  command: string
+  state: 'running' | 'succeeded' | 'failed' | 'cancelled'
+  progress?: number
+  startedAt: string
+  finishedAt?: string
+  message?: string
+}
 
 export type ExternalDiffSource =
   | { kind: 'workspace' }
@@ -402,6 +473,7 @@ export interface P4GitApi {
   chooseInitDirectory(): Promise<string | undefined>
   getSettings(): Promise<AppSettings>
   saveDiffSettings(executable?: string, argumentsTemplate?: string): Promise<AppSettings>
+  savePreferences(diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings): Promise<AppSettings>
   getGitHealth(): Promise<GitHealth>
   openRepository(repoPath: string): Promise<RepositorySummary>
   getStatus(repoPath: string): Promise<RepositorySummary>
@@ -423,11 +495,16 @@ export interface P4GitApi {
   getGraph(repoPath: string, limit?: number): Promise<GraphCommit[]>
   getConflicts(repoPath: string): Promise<ConflictFile[]>
   resolveConflict(repoPath: string, filePath: string, resolution: ConflictResolution, content?: string): Promise<void>
+  launchExternalMerge(repoPath: string, filePath: string): Promise<boolean>
   continueOperation(repoPath: string): Promise<string>
   revertCommits(repoPath: string, refs: string[]): Promise<string>
   markDelete(repoPath: string, paths: string[]): Promise<void>
   revert(repoPath: string, paths: string[]): Promise<void>
   restoreFromRef(repoPath: string, ref: string, paths: string[]): Promise<void>
+  resolveRevision(repoPath: string, input: string): Promise<RevisionResolution>
+  getLfsStatus(repoPath: string): Promise<LfsStatus>
+  lockLfsFiles(repoPath: string, paths: string[]): Promise<LfsStatus>
+  unlockLfsFiles(repoPath: string, paths: string[], force?: boolean): Promise<LfsStatus>
   getChangelists(repoPath: string): Promise<ChangelistState>
   createChangelist(repoPath: string, name: string, description?: string): Promise<ChangelistState>
   updateChangelist(repoPath: string, id: string, name: string, description?: string): Promise<ChangelistState>

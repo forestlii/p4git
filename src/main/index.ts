@@ -4,6 +4,7 @@ import { access } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type {
   AbortOperation,
+  AppearanceSettings,
   CloneRequest,
   ConflictResolution,
   CheckoutRequest,
@@ -116,6 +117,7 @@ function createApplicationMenu(): void {
             action('GitLab...', 'gitlab'),
             action('Resolve Conflicts...', 'resolve-conflicts'),
             action('Manage Remotes...', 'git-remotes'),
+            action('Git LFS Locks...', 'lfs-locks'),
             { type: 'separator' },
             action('Merge Branch...', 'git-merge'),
             action('Rebase onto Branch...', 'git-rebase'),
@@ -173,7 +175,7 @@ function contextMenuTemplate(
   switch (request.kind) {
     case 'workspace-file':
       return [
-        item('Get Latest Revision', 'get-latest', Boolean(request.tracked)),
+        item(request.multiple ? 'Get Revision for Selected...' : 'Get Revision...', 'get-latest', Boolean(request.tracked)),
         separator,
         item('Checkout', 'checkout', Boolean(request.tracked)),
         item('Checkout and Open', 'checkout-open', Boolean(request.tracked)),
@@ -193,12 +195,16 @@ function contextMenuTemplate(
         gitMenu([
           item('Stage', 'git-stage', Boolean(request.changed && request.unstaged)),
           item('Unstage', 'git-unstage', Boolean(request.staged)),
-          item('Stash This File...', 'git-stash-path', Boolean(request.changed))
+          item('Stash This File...', 'git-stash-path', Boolean(request.changed)),
+          separator,
+          item(request.multiple ? 'Lock Selected with Git LFS' : 'Lock with Git LFS', 'lfs-lock', Boolean(request.tracked)),
+          item(request.multiple ? 'Unlock Selected with Git LFS' : 'Unlock with Git LFS', 'lfs-unlock', Boolean(request.tracked)),
+          item('Manage Git LFS Locks...', 'lfs-locks')
         ])
       ]
     case 'workspace-folder':
       return [
-        item('Get Latest Revision', 'get-latest', Boolean(request.tracked)),
+        item('Get Revision...', 'get-latest', Boolean(request.tracked)),
         item('File History', 'file-history', Boolean(request.tracked)),
         item('Show in Depot Tree', 'show-depot', Boolean(request.tracked)),
         separator,
@@ -209,7 +215,7 @@ function contextMenuTemplate(
       ]
     case 'depot-file':
       return [
-        item('Get Latest Revision', 'get-latest'),
+        item(request.multiple ? 'Get Revision for Selected...' : 'Get Revision...', 'get-latest'),
         separator,
         item('Checkout', 'checkout'),
         item('Checkout and Open', 'checkout-open'),
@@ -224,7 +230,7 @@ function contextMenuTemplate(
       ]
     case 'depot-folder':
       return [
-        item('Get Latest Revision', 'get-latest'),
+        item('Get Revision...', 'get-latest'),
         item('File History', 'file-history'),
         item('Show in Workspace Tree', 'show-workspace'),
         separator,
@@ -251,7 +257,11 @@ function contextMenuTemplate(
         gitMenu([
           item('Stage', 'git-stage', !request.staged),
           item('Unstage', 'git-unstage', Boolean(request.staged)),
-          item('Stash This File...', 'git-stash-path')
+          item('Stash This File...', 'git-stash-path'),
+          separator,
+          item(request.multiple ? 'Lock Selected with Git LFS' : 'Lock with Git LFS', 'lfs-lock', !request.untracked),
+          item(request.multiple ? 'Unlock Selected with Git LFS' : 'Unlock with Git LFS', 'lfs-unlock', !request.untracked),
+          item('Manage Git LFS Locks...', 'lfs-locks')
         ])
       ]
     case 'submitted-change':
@@ -419,6 +429,21 @@ function registerIpc(): void {
     }
     return settings.update({ diffToolPath: cleanPath, diffToolArguments: cleanPath ? argumentsTemplate?.trim() : undefined })
   })
+  ipcMain.handle('settings:save-preferences', async (_event, diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings) => {
+    const validate = async (value: string | undefined, label: string): Promise<string | undefined> => {
+      const clean = value?.trim() || undefined
+      if (!clean) return undefined
+      if (!isAbsolute(clean)) throw new Error(`${label}路径必须是绝对路径。`)
+      await access(clean).catch(() => { throw new Error(`找不到${label}：${clean}`) })
+      if (!clean.toLowerCase().endsWith('.exe') && !clean.toLowerCase().endsWith('.com')) throw new Error(`${label}必须是可执行文件。`)
+      return clean
+    }
+    const diffPath = await validate(diffExecutable, '外部 Diff 工具')
+    const mergePath = await validate(mergeExecutable, '外部 Merge 工具')
+    if (diffPath && (!diffArguments?.includes('{left}') || !diffArguments.includes('{right}'))) throw new Error('Diff 参数模板必须包含 {left} 和 {right}。')
+    if (mergePath && !['{base}', '{ours}', '{theirs}', '{result}'].every((token) => mergeArguments?.includes(token))) throw new Error('Merge 参数模板必须包含 {base}、{ours}、{theirs} 和 {result}。')
+    return settings.update({ diffToolPath: diffPath, diffToolArguments: diffPath ? diffArguments?.trim() : undefined, mergeToolPath: mergePath, mergeToolArguments: mergePath ? mergeArguments?.trim() : undefined, appearance })
+  })
   ipcMain.handle('git:health', () => git.health())
   ipcMain.handle('git:open', (_event, repoPath: string) => git.openRepository(repoPath))
   ipcMain.handle('git:status', (_event, repoPath: string) => git.summary(repoPath))
@@ -466,6 +491,7 @@ function registerIpc(): void {
   ipcMain.handle('git:resolve-conflict', (_event, repoPath: string, filePath: string, resolution: ConflictResolution, content?: string) =>
     git.resolveConflict(repoPath, filePath, resolution, content)
   )
+  ipcMain.handle('git:external-merge', (_event, repoPath: string, filePath: string) => git.launchExternalMerge(repoPath, filePath))
   ipcMain.handle('git:continue-operation', (_event, repoPath: string) => git.continueOperation(repoPath))
   ipcMain.handle('git:revert-commits', (_event, repoPath: string, refs: string[]) => git.revertCommits(repoPath, refs))
   ipcMain.handle('git:mark-delete', (_event, repoPath: string, paths: string[]) =>
@@ -477,6 +503,10 @@ function registerIpc(): void {
   ipcMain.handle('git:restore-from-ref', (_event, repoPath: string, ref: string, paths: string[]) =>
     git.restoreFromRef(repoPath, ref, paths)
   )
+  ipcMain.handle('git:resolve-revision', (_event, repoPath: string, input: string) => git.resolveRevision(repoPath, input))
+  ipcMain.handle('git:lfs-status', (_event, repoPath: string) => git.lfsStatus(repoPath))
+  ipcMain.handle('git:lfs-lock', (_event, repoPath: string, paths: string[]) => git.lockLfsFiles(repoPath, paths))
+  ipcMain.handle('git:lfs-unlock', (_event, repoPath: string, paths: string[], force?: boolean) => git.unlockLfsFiles(repoPath, paths, force))
   ipcMain.handle('git:changelists', (_event, repoPath: string) => git.changelists(repoPath))
   ipcMain.handle('git:changelist-create', (_event, repoPath: string, name: string, description?: string) =>
     git.createChangelist(repoPath, name, description)

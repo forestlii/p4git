@@ -2,9 +2,29 @@ import { app } from 'electron'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
-import type { AppSettings } from '../shared/types'
+import { DEFAULT_APPEARANCE } from '../shared/types'
+import type { AppSettings, AppearanceSettings } from '../shared/types'
 
 const defaults: AppSettings = { recentRepositories: [] }
+
+function appearance(value: Partial<AppearanceSettings> | undefined): AppearanceSettings {
+  const scale = Number(value?.fontScale)
+  const workspacePaneWidth = Number(value?.workspacePaneWidth)
+  const detailPaneHeight = Number(value?.detailPaneHeight)
+  const logPaneHeight = Number(value?.logPaneHeight)
+  return {
+    ...DEFAULT_APPEARANCE,
+    ...value,
+    theme: value?.theme === 'light' || value?.theme === 'dark' ? value.theme : 'classic',
+    density: value?.density === 'comfortable' ? 'comfortable' : 'compact',
+    fontScale: Number.isFinite(scale) ? Math.min(1.35, Math.max(.85, scale)) : 1,
+    showToolbarLabels: value?.showToolbarLabels !== false,
+    workspacePaneWidth: Number.isFinite(workspacePaneWidth) ? Math.min(650, Math.max(180, workspacePaneWidth)) : 292,
+    detailPaneHeight: Number.isFinite(detailPaneHeight) ? Math.min(600, Math.max(100, detailPaneHeight)) : 260,
+    logPaneHeight: Number.isFinite(logPaneHeight) ? Math.min(500, Math.max(80, logPaneHeight)) : 140,
+    tableColumnWidths: value?.tableColumnWidths && typeof value.tableColumnWidths === 'object' ? value.tableColumnWidths : {}
+  }
+}
 
 export class SettingsStore {
   private readonly filePath = join(app.getPath('userData'), 'settings.json')
@@ -19,6 +39,9 @@ export class SettingsStore {
         gitPath: typeof parsed.gitPath === 'string' ? parsed.gitPath : undefined,
         diffToolPath: typeof parsed.diffToolPath === 'string' ? parsed.diffToolPath : undefined,
         diffToolArguments: typeof parsed.diffToolArguments === 'string' ? parsed.diffToolArguments : undefined,
+        mergeToolPath: typeof parsed.mergeToolPath === 'string' ? parsed.mergeToolPath : undefined,
+        mergeToolArguments: typeof parsed.mergeToolArguments === 'string' ? parsed.mergeToolArguments : undefined,
+        appearance: appearance(parsed.appearance),
         lastRepository: typeof parsed.lastRepository === 'string' ? parsed.lastRepository : undefined,
         bookmarks: Array.isArray(parsed.bookmarks)
           ? parsed.bookmarks.filter((item): item is string => typeof item === 'string').slice(0, 50)

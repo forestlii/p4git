@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppSettings } from '../../shared/types'
 import type { SettingsStore } from '../settings'
-import { expandDiffToolArguments, GitService } from './service'
+import { expandDiffToolArguments, expandMergeToolArguments, GitService } from './service'
 
 const execFileAsync = promisify(execFile)
 const temporaryRepositories: string[] = []
@@ -54,6 +54,9 @@ describe('GitService Git-native operations', () => {
       rightTitle: 'Workspace',
     })).toEqual(['/solo', '/lefttitle=HEAD version', 'C:\\Temp Folder\\left.txt', 'C:\\Temp Folder\\right.txt'])
     expect(() => expandDiffToolArguments('"{left}', { left: 'a', right: 'b', leftTitle: 'a', rightTitle: 'b' })).toThrow('引号没有闭合')
+    expect(expandMergeToolArguments('"{theirs}" "{ours}" "{base}" "{result}"', {
+      base: 'C:\\Temp Folder\\base.txt', ours: 'ours.txt', theirs: 'theirs.txt', result: 'result.txt'
+    })).toEqual(['theirs.txt', 'ours.txt', 'C:\\Temp Folder\\base.txt', 'result.txt'])
   })
 
   it('loads file and repository history with revision-scoped diffs', async () => {
@@ -68,6 +71,8 @@ describe('GitService Git-native operations', () => {
     expect((await subject.fileHistory(root, '.')).length).toBe(2)
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[0].hash)).toContain('+second revision')
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[1].hash, 'HEAD')).toContain('+second revision')
+    await expect(subject.resolveRevision(root, 'HEAD')).resolves.toMatchObject({ subject: 'second revision', files: [{ path: 'tracked.txt', kind: 'M' }] })
+    await expect(subject.resolveRevision(root, new Date(Date.now() + 60_000).toISOString())).resolves.toMatchObject({ subject: 'second revision' })
 
     const external = service({ diffToolPath: process.execPath, diffToolArguments: '--version "{left}" "{right}"' })
     await expect(external.launchExternalDiff({
@@ -219,7 +224,8 @@ describe('GitService Git-native operations', () => {
       binary: false,
       base: 'initial\n',
       ours: 'main version\n',
-      theirs: 'feature version\n'
+      theirs: 'feature version\n',
+      result: expect.stringContaining('<<<<<<<')
     })
 
     await subject.resolveConflict(root, 'tracked.txt', 'manual', 'combined version\n')

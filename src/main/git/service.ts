@@ -5,7 +5,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, wri
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { DEFAULT_DIFF_TOOL_ARGUMENTS } from '../../shared/types'
+import { DEFAULT_DIFF_TOOL_ARGUMENTS, DEFAULT_MERGE_TOOL_ARGUMENTS } from '../../shared/types'
 import type {
   AbortOperation,
   BlameLine,
@@ -22,6 +22,8 @@ import type {
   GraphCommit,
   GitHealth,
   InitRequest,
+  LfsLock,
+  LfsStatus,
   LocalChangelist,
   OperationState,
   PullResult,
@@ -32,6 +34,7 @@ import type {
   ReflogEntry,
   ResetMode,
   RevisionFile,
+  RevisionResolution,
   StashEntry,
   ShelfInfo,
   WorkspaceEntry
@@ -62,6 +65,21 @@ export function expandDiffToolArguments(template: string, values: Record<'left' 
   if (quoted) throw new Error('外部 Diff 参数模板中的引号没有闭合。')
   if (current) tokens.push(current)
   return tokens.map((token) => token.replace(/\{(left|right|leftTitle|rightTitle)\}/g, (_match, key: keyof typeof values) => values[key]))
+}
+
+export function expandMergeToolArguments(template: string, values: Record<'base' | 'ours' | 'theirs' | 'result', string>): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let quoted = false
+  for (const character of template) {
+    if (character === '"') quoted = !quoted
+    else if (/\s/.test(character) && !quoted) {
+      if (current) { tokens.push(current); current = '' }
+    } else current += character
+  }
+  if (quoted) throw new Error('外部 Merge 参数模板中的引号没有闭合。')
+  if (current) tokens.push(current)
+  return tokens.map((token) => token.replace(/\{(base|ours|theirs|result)\}/g, (_match, key: keyof typeof values) => values[key]))
 }
 
 function asErrorMessage(error: unknown): string {
@@ -229,6 +247,58 @@ export class GitService {
     if (safePaths.length) {
       await this.run(root, ['restore', `--source=${safeRef}`, '--worktree', '--', ...safePaths])
     }
+  }
+
+  async resolveRevision(repoPath: string, input: string): Promise<RevisionResolution> {
+    const root = await this.repositoryRoot(repoPath)
+    const value = input.trim()
+    if (!value || value.length > 1024 || /[\0\r\n]/.test(value)) throw new Error('请输入分支、Tag、提交哈希或日期。')
+    const parsedDate = Date.parse(value)
+    const hash = Number.isFinite(parsedDate) && !/^[0-9a-f]{7,40}$/i.test(value)
+      ? (await this.run(root, ['rev-list', '-1', `--before=${new Date(parsedDate).toISOString()}`, '--all'])).trim()
+      : (await this.run(root, ['rev-parse', '--verify', `${this.safeRef(value)}^{commit}`])).trim()
+    if (!hash) throw new Error('找不到符合条件的提交。')
+    const output = await this.run(root, ['show', '-s', '--date=iso-strict', '--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1f%D', hash])
+    const [fullHash, shortHash, author, date, subject, decoration = ''] = output.trim().split('\x1f')
+    return { input: value, hash: fullHash, shortHash, author, date, subject, refs: decoration.split(',').map((item) => item.trim()).filter(Boolean), files: await this.commitFiles(root, fullHash) }
+  }
+
+  async lfsStatus(repoPath: string): Promise<LfsStatus> {
+    const root = await this.repositoryRoot(repoPath)
+    const version = await this.run(root, ['lfs', 'version']).then((value) => value.trim()).catch(() => '')
+    if (!version) return { installed: false, repositoryEnabled: false, error: 'Git LFS 未安装。请先安装 Git LFS。', locks: [] }
+    const repositoryEnabled = await this.run(root, ['config', '--local', '--get-regexp', '^filter\\.lfs\\.']).then(() => true).catch(() => false)
+    try {
+      type RawLock = { id?: string; path?: string; owner?: { name?: string } | string; locked_at?: string }
+      const [parsed, mine] = await Promise.all([
+        this.run(root, ['lfs', 'locks', '--json']).then((value) => JSON.parse(value) as { locks?: RawLock[] }),
+        this.run(root, ['lfs', 'locks', '--json', '--ours']).then((value) => JSON.parse(value) as { locks?: RawLock[] }).catch(() => ({ locks: [] as RawLock[] }))
+      ])
+      const ours = new Set((mine.locks ?? []).map((item) => item.id ?? item.path))
+      const seen = new Set<string>()
+      const locks: LfsLock[] = [...(parsed.locks ?? []), ...(mine.locks ?? [])].flatMap((item) => {
+        const path = item.path ?? ''
+        const id = item.id ?? path
+        if (!path || seen.has(id)) return []
+        seen.add(id)
+        return [{ id, path, owner: typeof item.owner === 'string' ? item.owner : item.owner?.name ?? '', lockedAt: item.locked_at, mine: ours.has(id) }]
+      })
+      return { installed: true, repositoryEnabled, version, locks }
+    } catch (error) {
+      return { installed: true, repositoryEnabled, version, error: asErrorMessage(error), locks: [] }
+    }
+  }
+
+  async lockLfsFiles(repoPath: string, paths: string[]): Promise<LfsStatus> {
+    const root = await this.repositoryRoot(repoPath)
+    for (const path of paths) await this.run(root, ['lfs', 'lock', '--', this.safeRelativePath(root, path)])
+    return this.lfsStatus(root)
+  }
+
+  async unlockLfsFiles(repoPath: string, paths: string[], force = false): Promise<LfsStatus> {
+    const root = await this.repositoryRoot(repoPath)
+    for (const path of paths) await this.run(root, ['lfs', 'unlock', ...(force ? ['--force'] : []), '--', this.safeRelativePath(root, path)])
+    return this.lfsStatus(root)
   }
 
   async changelists(repoPath: string): Promise<ChangelistState> {
@@ -572,15 +642,17 @@ export class GitService {
       .split('\0').filter(Boolean)
     return Promise.all(paths.map(async (filePath) => {
       const safePath = this.safeRelativePath(root, filePath)
-      const [base, ours, theirs] = await Promise.all([1, 2, 3].map((stage) =>
-        this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0))
-      ))
-      const binary = [base, ours, theirs].some((content) => content.includes(0))
+      const [base, ours, theirs, result] = await Promise.all([
+        ...[1, 2, 3].map((stage) => this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0))),
+        readFile(join(root, safePath)).catch(() => Buffer.alloc(0))
+      ])
+      const binary = [base, ours, theirs, result].some((content) => content.includes(0))
       return {
         path: safePath,
         base: binary ? '' : base.toString('utf8'),
         ours: binary ? '' : ours.toString('utf8'),
         theirs: binary ? '' : theirs.toString('utf8'),
+        result: binary ? '' : result.toString('utf8'),
         binary
       }
     }))
@@ -597,6 +669,34 @@ export class GitService {
       throw new Error('冲突解决方式无效。')
     }
     await this.run(root, ['add', '--', safePath])
+  }
+
+  async launchExternalMerge(repoPath: string, filePath: string): Promise<boolean> {
+    const configured = await this.settings.get()
+    const executable = configured.mergeToolPath?.trim()
+    if (!executable) return false
+    if (!isAbsolute(executable)) throw new Error('外部 Merge 工具路径必须是绝对路径。')
+    await access(executable).catch(() => { throw new Error(`找不到外部 Merge 工具：${executable}`) })
+    const root = await this.repositoryRoot(repoPath)
+    const safePath = this.safeRelativePath(root, filePath)
+    const temporary = await mkdtemp(join(tmpdir(), 'p4git-merge-'))
+    const fileName = basename(safePath)
+    const paths = { base: join(temporary, `base-${fileName}`), ours: join(temporary, `ours-${fileName}`), theirs: join(temporary, `theirs-${fileName}`), result: join(root, safePath) }
+    await Promise.all([1, 2, 3].map(async (stage, index) => {
+      const target = [paths.base, paths.ours, paths.theirs][index]
+      await writeFile(target, await this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0)))
+      await chmod(target, 0o444).catch(() => undefined)
+    }))
+    const args = expandMergeToolArguments(configured.mergeToolArguments?.trim() || DEFAULT_MERGE_TOOL_ARGUMENTS, paths)
+    await new Promise<void>((resolveLaunch, rejectLaunch) => {
+      const child = spawn(executable, args, { cwd: root, windowsHide: false, stdio: 'ignore' })
+      this.activeProcesses.add(child)
+      child.once('error', (error) => { this.activeProcesses.delete(child); rejectLaunch(new Error(`无法启动外部 Merge 工具：${error.message}`)) })
+      child.once('close', (code) => { this.activeProcesses.delete(child); code === 0 ? resolveLaunch() : rejectLaunch(new Error(`外部 Merge 工具退出，代码 ${code ?? 'unknown'}。`)) })
+    })
+    await this.run(root, ['add', '--', safePath])
+    await rm(temporary, { recursive: true, force: true }).catch(() => undefined)
+    return true
   }
 
   async continueOperation(repoPath: string): Promise<string> {
