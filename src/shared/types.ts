@@ -56,7 +56,14 @@ export interface WorkspaceEntry {
 
 export interface RevisionFile {
   path: string
+  oldPath?: string
   kind: string
+}
+
+export interface CommitDetails extends CommitInfo {
+  parents: string[]
+  message: string
+  files: RevisionFile[]
 }
 
 export interface BlameLine {
@@ -93,7 +100,24 @@ export interface BranchComparison {
   current: string
   selected: string
   incoming: CommitInfo[]
+  integrated: CommitInfo[]
   outgoing: CommitInfo[]
+}
+
+export interface SelectiveMergeRequest {
+  repoPath: string
+  refs: string[]
+  changelistName: string
+  description?: string
+}
+
+export interface SelectiveMergeResult {
+  state: ChangelistState
+  changelist: LocalChangelist
+  paths: string[]
+  applied: number
+  total: number
+  conflicted: boolean
 }
 
 export interface PushRequest {
@@ -114,6 +138,7 @@ export interface OperationState {
   conflicts: number
   canContinue: boolean
   canAbort: boolean
+  changelistId?: string
 }
 
 export interface ReflogEntry {
@@ -226,6 +251,8 @@ export type ContextMenuKind =
   | 'depot-folder'
   | 'pending-file'
   | 'submitted-change'
+  | 'compare-commit'
+  | 'compare-file'
   | 'branch'
   | 'workspace'
   | 'log'
@@ -250,6 +277,8 @@ export type ContextMenuAction =
   | 'stage'
   | 'unstage'
   | 'commit-files'
+  | 'view-commit-details'
+  | 'diff-local'
   | 'commit-diff'
   | 'copy-hash'
   | 'switch-branch'
@@ -491,6 +520,7 @@ export interface P4GitApi {
   launchExternalDiff(request: ExternalDiffRequest): Promise<boolean>
   getBlame(repoPath: string, filePath: string, ref?: string): Promise<BlameLine[]>
   getCommitFiles(repoPath: string, hash: string): Promise<RevisionFile[]>
+  getCommitDetails(repoPath: string, hash: string): Promise<CommitDetails>
   getCommitDiff(repoPath: string, hash: string): Promise<string>
   getGraph(repoPath: string, limit?: number): Promise<GraphCommit[]>
   getConflicts(repoPath: string): Promise<ConflictFile[]>
@@ -520,6 +550,7 @@ export interface P4GitApi {
   getReflog(repoPath: string, limit?: number): Promise<ReflogEntry[]>
   cherryPick(repoPath: string, ref: string): Promise<string>
   cherryPickCommits(repoPath: string, refs: string[]): Promise<string>
+  selectiveMergeCommits(request: SelectiveMergeRequest): Promise<SelectiveMergeResult>
   merge(repoPath: string, ref: string): Promise<string>
   rebase(repoPath: string, ref: string): Promise<string>
   createTag(repoPath: string, name: string, ref: string): Promise<void>

@@ -136,7 +136,7 @@ export function parseRevisionFiles(output: string): RevisionFile[] {
     if (!firstPath) break
     if (kind.startsWith('R') || kind.startsWith('C')) {
       const nextPath = tokens[index++]
-      if (nextPath) files.push({ kind: kind[0], path: `${firstPath} → ${nextPath}` })
+      if (nextPath) files.push({ kind: kind[0], path: nextPath, oldPath: firstPath })
     } else {
       files.push({ kind: kind[0], path: firstPath })
     }

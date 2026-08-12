@@ -113,7 +113,7 @@ The table lists Git revisions with an approximate file revision number, commit h
 
 ## Stream Graph
 
-**Stream Graph** occupies the equivalent P4V location for Git topology. Its table draws lanes and merge edges from commit parents; the sidebar lists local and remote branches and marks the current branch. Branch context actions can switch or create a branch from the selected ref. Remote branches are read-only but can seed a local branch.
+**Stream Graph** occupies the equivalent P4V location for Git topology. Its table draws lanes and merge edges from commit parents; the sidebar lists local and remote branches and marks the current branch. Type part of a branch name in **Filter branch names...** for a case-insensitive fuzzy match. Drag the divider between Branches/Streams and Graph to reveal long names; the width persists, and double-clicking the divider resets it. Branch context actions can switch or create a branch from the selected ref. Remote branches are read-only but can seed a local branch.
 
 ## Resolving conflicts
 
@@ -125,7 +125,7 @@ If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git o
 
 Use `Ctrl`, `Shift`, or `Ctrl+A` in Files, Pending, History, Submitted, Revision Graph, and Workspaces. Context actions apply to the complete selection when batching is supported. Drag the Workspace, Details, and Log dividers to resize the workbench; drag Files/Pending header edges to resize long-name columns. Sizes persist between launches, and full paths appear as hover tooltips.
 
-The **Tasks** button next to Log opens command history and running-process status. **Cancel Running** terminates active Git process trees. Open **Tools > Git > Git LFS Locks** or a file's **Git** context submenu to inspect, create, unlock, or force-unlock LFS locks. P4Git reports when Git LFS or remote locking is unavailable.
+The **Tasks** button next to Log opens command history and running-process status. Fetch displays an animated footer status and indeterminate progress line immediately, so a slow remote cannot look like an ignored click; starting a duplicate Fetch while one is active is blocked. **Cancel Running** terminates active Git process trees. Open **Tools > Git > Git LFS Locks** or a file's **Git** context submenu to inspect, create, unlock, or force-unlock LFS locks. P4Git reports when Git LFS or remote locking is unavailable.
 
 ## Native Context Menus
 
@@ -157,9 +157,11 @@ Use **Tools > Git Settings** to select Git for Windows or the `git.exe` bundled 
 - **Connection > Fetch** updates remote-tracking refs without changing local files.
 - **Connection > Push** runs a normal push, or pushes to `origin` and sets upstream for a new local branch.
 
-**Connection > Push** first opens a preview where you select the remote, local/remote branch mapping, and upstream behavior, then inspect outgoing commits. **Tools > Git > Manage Remotes** adds, renames, edits Fetch/Push URLs, or removes remotes. Branch context menus include Rename and **Compare with Current**, which lists Incoming and Outgoing commits separately.
+**Connection > Push** first opens a preview where you select the remote, local/remote branch mapping, and upstream behavior, then inspect outgoing commits. **Tools > Git > Manage Remotes** adds, renames, edits Fetch/Push URLs, or removes remotes. Branch context menus include Rename and **Compare with Current**, which lists Incoming and Outgoing commits separately. Right-click or double-click a commit in Compare to inspect its full message, parents, and changed files. Each file reports Added/Modified/Deleted/Renamed/Copied status; right-click it to compare that revision with the local workspace. A configured external Diff tool is preferred, with the built-in text diff as fallback.
 
-To bring only specific work from another branch into the branch currently checked out, open **Compare with Current**, select one or more Incoming commits with `Ctrl`, `Shift`, or `Ctrl+A`, and choose **Merge Selected into <current>**. The same action is available by multi-selecting commits in Revision Graph and opening the context menu. P4Git applies commits as Git cherry-picks in parent/oldest-first order. A clean sequence completes automatically; if a commit conflicts, Resolve opens and **Continue** resumes the queued commits after all conflicts are resolved. Merge commits are not selectable for this workflow because Git requires an explicit mainline parent.
+To bring only specific work from another branch into the branch currently checked out, first make the workspace clean. Open **Compare with Current**, select one or more Incoming commits with `Ctrl`, `Shift`, or `Ctrl+A`, and choose **Merge Selected into <current>**. The same action is available by multi-selecting commits in Revision Graph and opening the context menu. Enter a name and description for the new local Changelist. P4Git applies the commits in parent/oldest-first order with `cherry-pick --no-commit`, resets the index afterward, and assigns every resulting workspace change to that Changelist: no Git commit is created automatically. If a commit conflicts, Resolve opens; after resolving all files, **Continue** processes the remaining queue and keeps all results in the same Changelist. **Abort** restores the clean starting revision and removes the temporary list. Merge commits are not selectable because Git requires an explicit mainline parent.
+
+Compare asks Git to identify patch-equivalent commits already contained in the current branch. These appear in the read-only **Already integrated (equivalent patch)** section and cannot be selected, avoiding the misleading “already contained” message after Merge is pressed.
 
 **Tools > Git > Amend Last Commit** changes the latest message and includes currently staged files. Amend changes the commit ID and should not be used on a commit already shared with teammates.
 

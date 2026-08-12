@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.5.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.6.0-0c8b87)
 
 ## 核心能力
 
@@ -24,13 +24,13 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | 外部 Diff | 配置 Beyond Compare 或其他可执行程序；文件比较会自动优先使用，并保留内置回退 |
 | 提交 | 通过 P4V 风格的 Checkout/Add 和 Submit Changelist 窗口创建 Git 提交 |
 | Submitted | 在 P4V 风格的已提交变更表格中浏览 Git 历史 |
-| Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；查看、新建和操作本地/远程分支 |
-| 选择性分支合并 | 对比其他分支与当前分支，多选指定提交并按依赖顺序合入；发生冲突时进入 Resolve |
+| Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；分支栏可拖动调宽，并支持按名称模糊筛选 |
+| 选择性分支合并 | 查看提交详情、文件状态和本地 Diff，再把选中提交应用到新建本地 Changelist，不自动创建 Git commit |
 | Resolve | 逐个冲突块选择 Ours/Theirs/Both、编辑结果、整文件选边，或启动已配置的外部三方合并工具 |
 | Get Revision | 输入分支、Tag、哈希或日期，预览目标提交和文件后恢复一个或多个工作区路径 |
 | Git LFS 锁 | 查看、创建、批量解锁和强制解锁远端 Git LFS Lock |
 | 个性化工作区 | 拖动面板分隔线和文件列；选择经典/浅色/深色主题、密度、字号及工具栏文字 |
-| 任务进度 | 查看运行中/成功/失败的 Git 任务、完整命令，并取消正在运行的进程 |
+| 任务进度 | Fetch 时立即在底部显示运行状态，并可在任务中心查看或取消 Git 任务 |
 | GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
 | 导航 | 可编辑位置栏、历史、书签、Workspace 下拉、树排序/过滤和可排序表头 |
 | 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
@@ -99,7 +99,7 @@ Windows 构建会在 `release/` 中生成 NSIS 安装版和便携版。参与开
 
 ## 当前状态
 
-版本 **0.5.0** 新增选择性分支合并：可在 **Compare with Current** 或 Revision Graph 中多选其他分支的提交，按依赖顺序合入当前分支；发生冲突时 Resolve，解决后继续完成剩余提交。
+版本 **0.6.0** 补齐选择性合并的审阅流程：Fetch 有明确运行反馈；Stream Graph 可拖动和模糊筛选；Compare 可查看提交详情、文件状态及与本地 Diff；选中提交会进入新建的本地 Changelist，不自动创建 Git commit。合并前还会识别当前分支已经包含的等价补丁。
 
 ## 协议
 

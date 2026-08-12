@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode } from '../shared/types'
+import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -40,6 +40,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:blame', repoPath, filePath, ref),
   getCommitFiles: (repoPath: string, hash: string) =>
     ipcRenderer.invoke('git:commit-files', repoPath, hash),
+  getCommitDetails: (repoPath: string, hash: string) =>
+    ipcRenderer.invoke('git:commit-details', repoPath, hash),
   getCommitDiff: (repoPath: string, hash: string) =>
     ipcRenderer.invoke('git:commit-diff', repoPath, hash),
   getGraph: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:graph', repoPath, limit),
@@ -86,6 +88,8 @@ const api: P4GitApi = {
     ipcRenderer.invoke('git:cherry-pick', repoPath, ref),
   cherryPickCommits: (repoPath: string, refs: string[]) =>
     ipcRenderer.invoke('git:cherry-pick-commits', repoPath, refs),
+  selectiveMergeCommits: (request: SelectiveMergeRequest) =>
+    ipcRenderer.invoke('git:selective-merge-commits', request),
   merge: (repoPath: string, ref: string) => ipcRenderer.invoke('git:merge', repoPath, ref),
   rebase: (repoPath: string, ref: string) => ipcRenderer.invoke('git:rebase', repoPath, ref),
   createTag: (repoPath: string, name: string, ref: string) =>

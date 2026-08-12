@@ -113,7 +113,7 @@ P4Git 在 Git 之上增加了一层仅属于当前仓库的 Changelist 管理：
 
 ## Stream Graph
 
-**Stream Graph** 在 P4V 对应位置呈现 Git 拓扑。主表根据每个 commit 的 parent 绘制多轨线和合并连接；左侧列出本地和远程分支并标记当前分支。可以新建分支，右键分支可切换或以它为起点创建分支。远程分支只读，但可以作为新本地分支的起点。
+**Stream Graph** 在 P4V 对应位置呈现 Git 拓扑。主表根据每个 commit 的 parent 绘制多轨线和合并连接；左侧列出本地和远程分支并标记当前分支。在 **Filter branch names...** 中输入部分名称即可进行不区分大小写的模糊筛选。拖动 Branches/Streams 与 Graph 之间的分隔条可为长分支名扩宽；宽度会自动保存，双击分隔条恢复默认值。可以新建分支，右键分支可切换或以它为起点创建分支。远程分支只读，但可以作为新本地分支的起点。
 
 ## Resolve 冲突
 
@@ -125,7 +125,7 @@ Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会
 
 Files、Pending、History、Submitted、Revision Graph 和 Workspaces 均支持 `Ctrl`、`Shift`、`Ctrl+A`。支持批处理的右键命令会作用于完整选择。拖动 Workspace、Details、Log 分隔线可调整工作区；拖动 Files/Pending 列头边缘可为长文件名扩宽，尺寸会跨启动保存，悬停还能查看完整路径。
 
-Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态，**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
+Log 旁的 **Tasks** 按钮用于查看命令历史和运行状态。Fetch 开始后，底部会立即显示旋转状态和不确定进度线，慢速远端不再像“点击无反应”；已有 Fetch 运行时会阻止重复启动。**Cancel Running** 会终止活动 Git 进程树。通过 **Tools > Git > Git LFS Locks** 或文件右键 **Git** 子菜单查看、创建、解锁或强制解锁 LFS Lock；Git LFS 或远端锁不可用时会明确显示原因。
 
 ## 原生右键菜单
 
@@ -157,9 +157,11 @@ Merge、Rebase 和 Cherry-pick 发生冲突时，Git 会保留进行中的操作
 - **Connection > Fetch** 更新远程跟踪引用，不修改本地文件。
 - **Connection > Push** 执行普通 Push；新的本地分支会推送到 `origin` 并设置 upstream。
 
-**Connection > Push** 会先打开预览窗口，可选择 Remote、本地分支、远端分支和是否设置 upstream，并查看即将推送的 commit。**Tools > Git > Manage Remotes** 可新增、改名、修改 Fetch/Push URL 或删除 Remote。分支右键提供 Rename 和 **Compare with Current**，后者分别列出 Incoming 与 Outgoing commits。
+**Connection > Push** 会先打开预览窗口，可选择 Remote、本地分支、远端分支和是否设置 upstream，并查看即将推送的 commit。**Tools > Git > Manage Remotes** 可新增、改名、修改 Fetch/Push URL 或删除 Remote。分支右键提供 Rename 和 **Compare with Current**，后者分别列出 Incoming 与 Outgoing commits。在 Compare 中右键或双击提交可查看完整说明、parents 和变更文件；文件会标注 Added/Modified/Deleted/Renamed/Copied。右键文件可把该提交版本与本地工作区比较；配置外部 Diff 后优先使用，失败时回退到内置文本 Diff。
 
-如果只想把其他分支的部分工作合入当前检出的分支，打开 **Compare with Current**，用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Incoming commits，然后点击 **Merge Selected into <当前分支>**。Revision Graph 也支持多选提交后通过右键菜单执行同一操作。P4Git 底层使用 Git cherry-pick，并按父子依赖/从旧到新的顺序应用；没有冲突时自动完成，遇到冲突则打开 Resolve，全部解决后点击 **Continue** 会继续队列中的剩余提交。Merge commit 需要额外指定 mainline parent，因此当前不纳入这项选择性合并流程。
+如果只想把其他分支的部分工作合入当前检出的分支，请先保证工作区干净。打开 **Compare with Current**，用 `Ctrl`、`Shift` 或 `Ctrl+A` 多选 Incoming commits，然后点击 **Merge Selected into <当前分支>**；Revision Graph 也支持多选提交后通过右键执行。输入新本地 Changelist 的名称和说明后，P4Git 会按父子依赖/从旧到新的顺序使用 `cherry-pick --no-commit` 应用提交，最后取消暂存并把所有工作区改动归入该 Changelist，整个过程不会自动创建 Git commit。遇到冲突会打开 Resolve；全部解决后点击 **Continue** 继续剩余队列，结果仍归入同一个 Changelist。**Abort** 会恢复开始时的干净版本并删除临时列表。Merge commit 需要额外指定 mainline parent，因此当前不纳入这项流程。
+
+Compare 会先让 Git 识别当前分支已经包含的等价补丁，并将其放入只读的 **Already integrated (equivalent patch)** 区域，不能再次选择。这样在点击 Merge 前就能解释“该提交已经包含在当前分支中”的情况。
 
 **Tools > Git > Amend Last Commit** 可以更改最近一次提交说明，并把当前 staged 文件加入该提交。Amend 会改变 commit ID；已经共享给他人的提交不应 Amend。
 

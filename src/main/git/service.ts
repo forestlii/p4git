@@ -12,6 +12,7 @@ import type {
   BranchInfo,
   BranchComparison,
   ChangelistState,
+  CommitDetails,
   CommitInfo,
   DiffRequest,
   ExternalDiffRequest,
@@ -35,6 +36,8 @@ import type {
   ResetMode,
   RevisionFile,
   RevisionResolution,
+  SelectiveMergeRequest,
+  SelectiveMergeResult,
   StashEntry,
   ShelfInfo,
   WorkspaceEntry
@@ -85,6 +88,16 @@ export function expandMergeToolArguments(template: string, values: Record<'base'
 function asErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+interface SelectiveMergeSession {
+  version: 1
+  head: string
+  changelistId: string
+  refs: string[]
+  nextIndex: number
+  paths: string[]
+  createdAt: string
 }
 
 async function canExecute(filePath: string): Promise<boolean> {
@@ -451,34 +464,43 @@ export class GitService {
 
   async cherryPickCommits(repoPath: string, refs: string[]): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
-    const safeRefs = [...new Set(refs.map((ref) => this.safeRef(ref)))]
-    if (!safeRefs.length) throw new Error('请选择至少一个要合并的提交。')
-    const commits: Array<{ hash: string; parents: string[] }> = []
-    for (const ref of safeRefs) {
-      const hash = (await this.run(root, ['rev-parse', '--verify', `${ref}^{commit}`]).catch(() => { throw new Error(`找不到提交：${ref}`) })).trim()
-      const contained = await this.run(root, ['merge-base', '--is-ancestor', hash, 'HEAD']).then(() => true).catch(() => false)
-      const equivalent = contained ? true : await this.run(root, ['cherry', 'HEAD', hash])
-        .then((output) => output.split(/\r?\n/).some((line) => line === `- ${hash}`))
-        .catch(() => false)
-      if (equivalent) throw new Error(`提交 ${ref.slice(0, 10)} 已经包含在当前分支中，无需再次合并。`)
-      const parents = (await this.run(root, ['show', '-s', '--format=%P', hash])).trim().split(/\s+/).filter(Boolean)
-      if (parents.length > 1) throw new Error(`提交 ${ref.slice(0, 10)} 是 Merge commit，选择性合并需要指定 mainline，当前版本暂不支持。`)
-      commits.push({ hash, parents })
-    }
-    const selected = new Map(commits.map((commit) => [commit.hash, commit]))
-    const ordered: string[] = []
-    const visited = new Set<string>()
-    const visit = (commit: { hash: string; parents: string[] }): void => {
-      if (visited.has(commit.hash)) return
-      visited.add(commit.hash)
-      for (const parent of commit.parents) {
-        const selectedParent = selected.get(parent)
-        if (selectedParent) visit(selectedParent)
-      }
-      ordered.push(commit.hash)
-    }
-    for (const commit of commits) visit(commit)
+    const ordered = await this.orderedCherryPickRefs(root, refs)
     return this.run(root, ['cherry-pick', ...ordered])
+  }
+
+  async selectiveMergeCommits(request: SelectiveMergeRequest): Promise<SelectiveMergeResult> {
+    const root = await this.repositoryRoot(request.repoPath)
+    if (await this.readSelectiveMergeSession(root)) throw new Error('当前已有一个未完成的选择性合并，请先 Resolve、Continue 或 Abort。')
+    const dirty = (await this.run(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all'])).length > 0
+    if (dirty) throw new Error('选择性合并要求工作区为空。请先提交或 Shelve 当前 Changelist，避免合并文件与现有改动混合。')
+    const refs = await this.orderedCherryPickRefs(root, request.refs)
+    const state = await this.readChangelists(root)
+    const name = this.changelistName(request.changelistName)
+    if (state.changelists.some((item) => item.name.toLowerCase() === name.toLowerCase())) throw new Error('已存在同名 Changelist。')
+    const changelist: LocalChangelist = {
+      id: randomUUID(),
+      name,
+      description: (request.description ?? '').trim().slice(0, 2_000),
+      createdAt: new Date().toISOString()
+    }
+    state.changelists.push(changelist)
+    await this.writeChangelists(root, state)
+    const session: SelectiveMergeSession = {
+      version: 1,
+      head: (await this.run(root, ['rev-parse', 'HEAD'])).trim(),
+      changelistId: changelist.id,
+      refs,
+      nextIndex: 0,
+      paths: [],
+      createdAt: new Date().toISOString()
+    }
+    await this.writeSelectiveMergeSession(root, session)
+    try {
+      return await this.applySelectiveMergeSession(root, session)
+    } catch (error) {
+      await this.rollbackSelectiveMerge(root, session)
+      throw error
+    }
   }
 
   async merge(repoPath: string, ref: string): Promise<string> {
@@ -522,16 +544,25 @@ export class GitService {
     const selected = this.safeRef(branch)
     const current = (await this.run(root, ['branch', '--show-current'])).trim()
     if (!current) throw new Error('Detached HEAD 无法执行分支比较。')
-    const [incoming, outgoing] = await Promise.all([
+    const [candidates, outgoing, cherry] = await Promise.all([
       this.logRange(root, `${current}..${selected}`),
-      this.logRange(root, `${selected}..${current}`)
+      this.logRange(root, `${selected}..${current}`),
+      this.run(root, ['cherry', current, selected]).catch(() => '')
     ])
-    return { current, selected, incoming, outgoing }
+    const equivalent = new Set(cherry.split(/\r?\n/).filter((line) => line.startsWith('- ')).map((line) => line.slice(2).trim()))
+    const integrated = candidates.filter((commit) => equivalent.has(commit.hash))
+    const incoming = candidates.filter((commit) => !equivalent.has(commit.hash))
+    return { current, selected, incoming, integrated, outgoing }
   }
 
   async abort(repoPath: string, operation: AbortOperation): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
     if (!['merge', 'rebase', 'cherry-pick', 'revert'].includes(operation)) throw new Error('Git 操作类型无效。')
+    const session = operation === 'cherry-pick' ? await this.readSelectiveMergeSession(root) : undefined
+    if (session) {
+      await this.rollbackSelectiveMerge(root, session)
+      return
+    }
     await this.run(root, [operation, '--abort'])
   }
 
@@ -645,6 +676,29 @@ export class GitService {
     return parseRevisionFiles(output)
   }
 
+  async commitDetails(repoPath: string, hash: string): Promise<CommitDetails> {
+    const root = await this.repositoryRoot(repoPath)
+    const safeHash = this.safeRef(hash)
+    const output = await this.run(root, [
+      'show', '-s', '--date=iso-strict',
+      '--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%D%x00%P%x00%B',
+      safeHash
+    ])
+    const [fullHash, shortHash, author, email, date, subject, decoration = '', parents = '', message = ''] = output.split('\0')
+    return {
+      hash: fullHash,
+      shortHash,
+      author,
+      email,
+      date,
+      subject,
+      refs: decoration.split(',').map((ref) => ref.trim()).filter(Boolean),
+      parents: parents.split(/\s+/).filter(Boolean),
+      message: message.trim(),
+      files: await this.commitFiles(root, fullHash)
+    }
+  }
+
   async commitDiff(repoPath: string, hash: string): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
     return this.run(root, ['show', '--format=', '--no-ext-diff', '--no-color', this.safeRef(hash)])
@@ -736,6 +790,16 @@ export class GitService {
     const gitPath = async (name: string): Promise<boolean> => {
       const target = (await this.run(root, ['rev-parse', '--git-path', name])).trim()
       return stat(isAbsolute(target) ? target : resolve(root, target)).then(() => true).catch(() => false)
+    }
+    const selective = await this.readSelectiveMergeSession(root)
+    if (selective) {
+      const conflicts = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z'])).split('\0').filter(Boolean)
+      if (conflicts.length) throw new Error(`仍有 ${conflicts.length} 个冲突文件没有解决。`)
+      await this.run(root, ['cherry-pick', '--quit']).catch(() => undefined)
+      const result = await this.applySelectiveMergeSession(root, selective)
+      return result.conflicted
+        ? `选择性合并在下一个冲突处暂停（${result.applied}/${result.total}）。`
+        : `选择性合并完成；${result.paths.length} 个文件已放入 Changelist ${result.changelist.name}。`
     }
     if (await gitPath('rebase-merge') || await gitPath('rebase-apply')) {
       return this.run(root, ['-c', 'core.editor=true', 'rebase', '--continue'])
@@ -953,13 +1017,15 @@ export class GitService {
       const target = (await this.run(root, ['rev-parse', '--git-path', name])).trim()
       return stat(isAbsolute(target) ? target : resolve(root, target)).then(() => true).catch(() => false)
     }
+    const selective = await this.readSelectiveMergeSession(root)
     let operation: OperationState['operation']
-    if (await exists('rebase-merge') || await exists('rebase-apply')) operation = 'rebase'
+    if (selective) operation = 'cherry-pick'
+    else if (await exists('rebase-merge') || await exists('rebase-apply')) operation = 'rebase'
     else if (await exists('CHERRY_PICK_HEAD')) operation = 'cherry-pick'
     else if (await exists('REVERT_HEAD')) operation = 'revert'
     else if (await exists('MERGE_HEAD')) operation = 'merge'
     const conflicts = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z'])).split('\0').filter(Boolean).length
-    return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation) }
+    return { operation, conflicts, canContinue: Boolean(operation) && conflicts === 0, canAbort: Boolean(operation), changelistId: selective?.changelistId }
   }
 
   async cancelOperations(): Promise<number> {
@@ -1052,6 +1118,126 @@ export class GitService {
       this.safeRef(range)
     ])
     return parseLog(output)
+  }
+
+  private async orderedCherryPickRefs(root: string, refs: string[]): Promise<string[]> {
+    const safeRefs = [...new Set(refs.map((ref) => this.safeRef(ref)))]
+    if (!safeRefs.length) throw new Error('请选择至少一个要合并的提交。')
+    const commits: Array<{ hash: string; parents: string[] }> = []
+    for (const ref of safeRefs) {
+      const hash = (await this.run(root, ['rev-parse', '--verify', `${ref}^{commit}`]).catch(() => { throw new Error(`找不到提交：${ref}`) })).trim()
+      const contained = await this.run(root, ['merge-base', '--is-ancestor', hash, 'HEAD']).then(() => true).catch(() => false)
+      const equivalent = contained ? true : await this.run(root, ['cherry', 'HEAD', hash])
+        .then((output) => output.split(/\r?\n/).some((line) => line === `- ${hash}`))
+        .catch(() => false)
+      if (equivalent) throw new Error(`提交 ${ref.slice(0, 10)} 已经包含在当前分支中，无需再次合并。请刷新 Compare with Current 列表。`)
+      const parents = (await this.run(root, ['show', '-s', '--format=%P', hash])).trim().split(/\s+/).filter(Boolean)
+      if (parents.length > 1) throw new Error(`提交 ${ref.slice(0, 10)} 是 Merge commit，选择性合并需要指定 mainline，当前版本暂不支持。`)
+      commits.push({ hash, parents })
+    }
+    const selected = new Map(commits.map((commit) => [commit.hash, commit]))
+    const ordered: string[] = []
+    const visited = new Set<string>()
+    const visit = (commit: { hash: string; parents: string[] }): void => {
+      if (visited.has(commit.hash)) return
+      visited.add(commit.hash)
+      for (const parent of commit.parents) {
+        const selectedParent = selected.get(parent)
+        if (selectedParent) visit(selectedParent)
+      }
+      ordered.push(commit.hash)
+    }
+    for (const commit of commits) visit(commit)
+    return ordered
+  }
+
+  private async applySelectiveMergeSession(root: string, session: SelectiveMergeSession): Promise<SelectiveMergeResult> {
+    for (let index = session.nextIndex; index < session.refs.length; index += 1) {
+      try {
+        await this.run(root, ['cherry-pick', '--no-commit', session.refs[index]])
+        session.nextIndex = index + 1
+        await this.captureSelectiveMergePaths(root, session)
+      } catch (error) {
+        const conflicts = (await this.run(root, ['diff', '--name-only', '--diff-filter=U', '-z'])).split('\0').filter(Boolean)
+        if (!conflicts.length) throw error
+        session.nextIndex = index + 1
+        const state = await this.captureSelectiveMergePaths(root, session)
+        const changelist = state.changelists.find((item) => item.id === session.changelistId)
+        if (!changelist) throw new Error('选择性合并的目标 Changelist 已不存在。')
+        return {
+          state,
+          changelist,
+          paths: session.paths,
+          applied: index,
+          total: session.refs.length,
+          conflicted: true
+        }
+      }
+    }
+    await this.run(root, ['cherry-pick', '--quit']).catch(() => undefined)
+    await this.run(root, ['reset'])
+    const state = await this.captureSelectiveMergePaths(root, session)
+    const changelist = state.changelists.find((item) => item.id === session.changelistId)
+    if (!changelist) throw new Error('选择性合并的目标 Changelist 已不存在。')
+    await this.removeSelectiveMergeSession(root)
+    return {
+      state,
+      changelist,
+      paths: session.paths,
+      applied: session.refs.length,
+      total: session.refs.length,
+      conflicted: false
+    }
+  }
+
+  private async captureSelectiveMergePaths(root: string, session: SelectiveMergeSession): Promise<ChangelistState> {
+    const output = await this.run(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all'])
+    const changes = parsePorcelainV2(output)
+    const paths = [...new Set(changes.flatMap((change) => change.oldPath ? [change.path, change.oldPath] : [change.path]))]
+    session.paths = [...new Set([...session.paths, ...paths])]
+    const state = await this.readChangelists(root)
+    if (!state.changelists.some((item) => item.id === session.changelistId)) throw new Error('选择性合并的目标 Changelist 已不存在。')
+    for (const path of paths) state.assignments[path] = session.changelistId
+    await Promise.all([this.writeChangelists(root, state), this.writeSelectiveMergeSession(root, session)])
+    return state
+  }
+
+  private async rollbackSelectiveMerge(root: string, session: SelectiveMergeSession): Promise<void> {
+    await this.run(root, ['cherry-pick', '--abort']).catch(() => undefined)
+    await this.run(root, ['reset', '--hard', session.head])
+    const state = await this.readChangelists(root)
+    state.changelists = state.changelists.filter((item) => item.id !== session.changelistId)
+    state.assignments = Object.fromEntries(Object.entries(state.assignments).filter(([, id]) => id !== session.changelistId))
+    await this.writeChangelists(root, state)
+    await this.removeSelectiveMergeSession(root)
+  }
+
+  private async selectiveMergePath(root: string): Promise<string> {
+    const gitPath = (await this.run(root, ['rev-parse', '--git-path', 'p4git/selective-merge.json'])).trim()
+    return isAbsolute(gitPath) ? normalize(gitPath) : resolve(root, gitPath)
+  }
+
+  private async readSelectiveMergeSession(root: string): Promise<SelectiveMergeSession | undefined> {
+    try {
+      const parsed = JSON.parse(await readFile(await this.selectiveMergePath(root), 'utf8')) as Partial<SelectiveMergeSession>
+      if (parsed.version !== 1 || typeof parsed.head !== 'string' || typeof parsed.changelistId !== 'string' ||
+          !Array.isArray(parsed.refs) || typeof parsed.nextIndex !== 'number' || !Array.isArray(parsed.paths) || typeof parsed.createdAt !== 'string') return undefined
+      return parsed as SelectiveMergeSession
+    } catch {
+      return undefined
+    }
+  }
+
+  private async writeSelectiveMergeSession(root: string, session: SelectiveMergeSession): Promise<void> {
+    const filePath = await this.selectiveMergePath(root)
+    await mkdir(dirname(filePath), { recursive: true })
+    const temporary = `${filePath}.${process.pid}.tmp`
+    await writeFile(temporary, JSON.stringify(session, null, 2), 'utf8')
+    await rename(temporary, filePath)
+  }
+
+  private async removeSelectiveMergeSession(root: string): Promise<void> {
+    await rm(await this.selectiveMergePath(root), { force: true })
   }
 
   private changelistName(name: string): string {

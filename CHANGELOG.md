@@ -2,6 +2,26 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.6.0 — 2026-08-12
+
+### English
+
+- Added immediate Fetch feedback with an animated footer indicator, progress line, duplicate-run protection, and task-center visibility.
+- Made the Stream Graph branch pane horizontally resizable and added case-insensitive fuzzy branch-name filtering.
+- Added Compare commit details, changed-file status, and per-file comparison against the local workspace with external-diff support.
+- Changed selective merge to create a named local Changelist and apply commits without creating a Git commit; Resolve continues the queued sequence after conflicts.
+- Detects and separates patch-equivalent commits that are already integrated into the current branch.
+- Made integration tests portable across Windows and Linux line endings and path separators.
+
+### 中文
+
+- Fetch 现在会立即显示底部动画、进度线和任务中心记录，并阻止重复启动。
+- Stream Graph 分支栏支持横向拖动调宽，并可按分支名称进行不区分大小写的模糊筛选。
+- Compare 支持查看提交详情、变更文件状态，并对单个文件执行“提交版本与本地工作区”比较；配置外部 Diff 后会优先使用。
+- 选择性合并现在会新建命名本地 Changelist，并在不创建 Git commit 的情况下应用提交；冲突解决后继续剩余队列。
+- 合并前识别并单独显示当前分支中已经存在的等价补丁。
+- 集成测试兼容 Windows/Linux 的换行符和路径分隔符。
+
 ## 0.5.0 — 2026-08-12
 
 ### English
