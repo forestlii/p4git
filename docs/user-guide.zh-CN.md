@@ -92,7 +92,7 @@ Windows 首次使用时会自动发现 `C:\Program Files\Beyond Compare 5\BCompa
 
 ## Workspace 选择与多窗口
 
-启动时先显示 Workspace 选择器，只预选最近仓库，不会自动连接。**File > New Workspace Window** 打开另一个选择窗口；Workspaces 列表右键可把仓库直接打开到新窗口。仓库选择、分支、页签、任务和取消操作均限定在对应窗口与 Workspace。
+启动时先显示 Workspace 选择器，只预选最近仓库，不会自动连接。**New Workspace...** 只在空的本地目录中初始化 Git 并登记 `origin` URL，明确不联网、不 Fetch、不 Clone、也不 Checkout。**File > New Workspace Window** 打开另一个选择窗口；Workspaces 列表右键可把仓库直接打开到新窗口。仓库选择、分支、页签、任务和取消操作均限定在对应窗口与 Workspace。
 
 ## Submit Changelist
 
@@ -107,9 +107,9 @@ Rebase 冲突时，Submit 会暂停并进入 Resolve，Continue 将继续同一�
 
 ## Submitted
 
-**Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列显示最近 100 个 Git 提交。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
+**Submitted** 表格以 P4V 风格的 Change、Date Submitted、Submitted By、Description 四列，按每页 100 条懒加载完整 Git 历史；接近滚动底部时继续加载。选择一行后，完整哈希、作者、时间和主题会显示在 **Details**。
 
-每个提交左侧箭头可原位展开文件列表。右键 **View Details...** 会打开接近 P4V 的详情窗口，显示完整说明、作者、日期、parents 和文件状态。详情中的文件可右键与上一版本或本地 Workspace 版本比较（已配置外部 Diff 时优先使用），也可复制路径；新增/删除使用空版本，重命名会使用旧路径进行正确比较。其他右键操作包括与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
+每个提交左侧箭头可原位展开文件列表。右键 **View Details...** 会打开接近 P4V 的详情窗口，显示标题、完整说明、作者、日期、parents、查看来源、包含该提交的全部本地/远程分支和文件状态。Git Commit 不单独归属于某个分支，因此“包含分支”才是准确的 P4V Stream 近似；所有顶部字段、标题和说明都提供明确的复制按钮。详情中的文件可右键与上一版本或本地 Workspace 版本比较（已配置外部 Diff 时优先使用），也可复制路径；新增/删除使用空版本，重命名会使用旧路径进行正确比较。其他右键操作包括与上一版本的完整 Diff、复制完整 commit hash、用新提交撤销所选变更、Cherry-pick、新建分支或 Tag，以及 Reset 当前分支。**Revert This Commit** 执行 `git revert --no-edit`，保留历史并生成反向提交；如果发生冲突，会转入 Resolve 工作流。交互式 Rebase 暂未提供。
 
 ## History
 
@@ -123,9 +123,9 @@ Rebase 冲突时，Submit 会暂停并进入 Resolve，Continue 将继续同一�
 
 ## Resolve 冲突
 
-通过 **Tools > Git > Resolve Conflicts** 打开三方解决器。文件列表右侧同时显示 Base、Ours、Theirs 和当前工作区 Result。标准冲突块可逐块选择 Ours、Theirs 或 Both，Result 也可继续手工编辑；配置外部三方 Merge 后可直接启动并写回结果。二进制冲突使用整文件 Ours/Theirs 或外部工具。全部解决后使用 **Continue Operation** 继续当前操作。
+通过 **Tools > Git > Resolve Conflicts** 打开三方解决器。产生冲突时，P4Git 会先为每个文件向已配置的外部三方 Merge 工具传入 Base/Ours/Theirs/Result，并等待工具保存退出；未单独配置 Merge 程序时，也会把已自动发现或配置的 Beyond Compare Diff 程序复用为三方 Merge。每个工具退出后都会重新检查，文本结果仍含 Git 冲突标记时不会暂存。工具缺失、取消、启动失败或仍未解决时自动回退内置 Resolve：右侧显示 Base、Ours、Theirs 和当前工作区 Result，可逐块选择 Ours、Theirs 或 Both、手工编辑，二进制冲突则使用整文件选边。全部解决后使用 **Continue Operation** 继续当前操作。
 
-Merge、Rebase、Cherry-pick、Revert 或 Get Latest 产生冲突时，P4Git 会自动打开 Resolve。状态栏持续显示当前操作、冲突数，以及是否已经可以 Continue。
+Merge、Rebase、Cherry-pick、Revert、选择性 Changelist 合并、Submit/Rebase 或 Get Latest 产生冲突时，P4Git 会自动开始上述“外部优先、内置兜底”的 Resolve 流程。状态栏持续显示当前操作、冲突数，以及是否已经可以 Continue。
 
 ## 多选、布局、任务与 LFS 锁
 
@@ -153,7 +153,7 @@ Merge、Rebase 和 Cherry-pick 发生冲突时，Git 会保留进行中的操作
 
 ## Workspaces
 
-**Workspaces** 页签显示最近仓库。双击表格行即可打开。使用 **File > Open Workspace** 选择已有仓库，使用 **File > Clone Repository** 输入 URL 和父目录，或用 **File > Init Repository** 在所选目录创建新仓库和初始分支。
+**Workspaces** 页签显示最近仓库。双击表格行即可打开。使用 **File > Open Workspace** 选择已有仓库；需要立刻下载并 Checkout 时使用 **File > Clone Repository**；需要只登记服务器、保持本地文件树为空时使用 **File > New Workspace**；与服务器无关的新本地仓库则使用 **File > Init Repository**。空的远端 Workspace 中，Fetch 只下载引用；第一次 Get Latest 会识别服务器公布的默认分支、创建本地跟踪分支并展开文件。如果空 Workspace 中已经加入本地文件，首次 Get Latest 会拒绝覆盖。
 
 使用 **Tools > Git Settings** 可以选择 Git for Windows 或 UGit 自带的 `git.exe`。P4Git 会先执行 `git --version` 验证，再保存路径。
 

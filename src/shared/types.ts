@@ -76,6 +76,7 @@ export interface WorkspaceEntry {
   path: string
   isDirectory: boolean
   tracked: boolean
+  ignored?: boolean
   unsynced?: boolean
 }
 
@@ -88,6 +89,10 @@ export interface RevisionFile {
 export interface CommitDetails extends CommitInfo {
   parents: string[]
   message: string
+  /** Branches whose tips can reach this commit. A Git commit can belong to more than one branch. */
+  branches: string[]
+  /** Branch from which the user opened this commit, when known. */
+  sourceBranch?: string
   files: RevisionFile[]
 }
 
@@ -246,6 +251,11 @@ export interface InitRequest {
   initialBranch: string
 }
 
+export interface NewWorkspaceRequest {
+  url: string
+  directory: string
+}
+
 export interface LocalChangelist {
   id: string
   name: string
@@ -316,6 +326,7 @@ export type ContextMenuAction =
   | 'git-stage'
   | 'git-unstage'
   | 'git-stash-path'
+  | 'merge-selected-changelist'
   | 'git-cherry-pick'
   | 'git-branch-from-commit'
   | 'git-branch-from-ref'
@@ -403,6 +414,7 @@ export type MenuAction =
   | 'git-commit-local'
   | 'gitlab'
   | 'resolve-conflicts'
+  | 'new-workspace'
   | 'clone'
   | 'init'
   | 'new-changelist'
@@ -517,6 +529,20 @@ export interface DiffDocument {
   message?: string
 }
 
+export interface DiffWindowTab {
+  id: string
+  title: string
+  content: DiffDocument | string
+}
+
+export interface RecentWorkspaceInfo {
+  path: string
+  name: string
+  branch?: string
+  available: boolean
+  error?: string
+}
+
 export interface GitHealth {
   available: boolean
   path?: string
@@ -549,6 +575,7 @@ export interface P4GitApi {
   chooseCloneParent(): Promise<string | undefined>
   chooseInitDirectory(): Promise<string | undefined>
   getSettings(): Promise<AppSettings>
+  getRecentWorkspaces(): Promise<RecentWorkspaceInfo[]>
   saveDiffSettings(executable?: string, argumentsTemplate?: string): Promise<AppSettings>
   savePreferences(diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings): Promise<AppSettings>
   getGitHealth(): Promise<GitHealth>
@@ -563,17 +590,21 @@ export interface P4GitApi {
   resumeSubmit(repoPath: string): Promise<StrictSubmitResult>
   prepareSubmitMergeRequest(repoPath: string): Promise<SubmitMergeRequestTarget>
   completeSubmitMergeRequest(repoPath: string): Promise<string | undefined>
-  getHistory(repoPath: string, limit?: number): Promise<CommitInfo[]>
+  getHistory(repoPath: string, limit?: number, offset?: number, ref?: string, firstParent?: boolean): Promise<CommitInfo[]>
   getBranches(repoPath: string): Promise<BranchInfo[]>
   listDirectory(repoPath: string, relativePath?: string): Promise<WorkspaceEntry[]>
   listTree(repoPath: string, ref: string, relativePath?: string): Promise<WorkspaceEntry[]>
-  getFileHistory(repoPath: string, filePath: string, limit?: number, ref?: string): Promise<CommitInfo[]>
+  getFileHistory(repoPath: string, filePath: string, limit?: number, ref?: string, offset?: number): Promise<CommitInfo[]>
   getFileRevisionDiff(repoPath: string, filePath: string, ref: string, compareRef?: string): Promise<string>
   getDiffDocument(request: ExternalDiffRequest): Promise<DiffDocument>
   launchExternalDiff(request: ExternalDiffRequest): Promise<boolean>
+  openDiffWindow(tabs: DiffWindowTab[]): Promise<void>
+  getDiffWindowTabs(): Promise<DiffWindowTab[]>
+  updateDiffWindowTabs(tabs: DiffWindowTab[]): Promise<void>
+  onDiffWindowTabs(callback: (tabs: DiffWindowTab[]) => void): () => void
   getBlame(repoPath: string, filePath: string, ref?: string): Promise<BlameLine[]>
   getCommitFiles(repoPath: string, hash: string): Promise<RevisionFile[]>
-  getCommitDetails(repoPath: string, hash: string): Promise<CommitDetails>
+  getCommitDetails(repoPath: string, hash: string, sourceBranch?: string): Promise<CommitDetails>
   getCommitDiff(repoPath: string, hash: string): Promise<string>
   getGraph(repoPath: string, limit?: number): Promise<GraphCommit[]>
   getConflicts(repoPath: string): Promise<ConflictFile[]>
@@ -615,6 +646,7 @@ export interface P4GitApi {
   checkout(request: CheckoutRequest): Promise<void>
   fetch(repoPath: string): Promise<void>
   pull(repoPath: string): Promise<PullResult>
+  getLatestPaths(repoPath: string, ref: string, paths: string[]): Promise<void>
   push(repoPath: string): Promise<void>
   getRemotes(repoPath: string): Promise<RemoteInfo[]>
   saveRemote(repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string): Promise<RemoteInfo[]>
@@ -623,6 +655,7 @@ export interface P4GitApi {
   pushTo(request: PushRequest): Promise<void>
   getOperationState(repoPath: string): Promise<OperationState>
   cancelOperations(repoPath?: string): Promise<number>
+  createRemoteWorkspace(request: NewWorkspaceRequest): Promise<string>
   cloneRepository(request: CloneRequest): Promise<string>
   initRepository(request: InitRequest): Promise<string>
   saveNavigation(bookmarks: string[], locationHistory: string[]): Promise<AppSettings>

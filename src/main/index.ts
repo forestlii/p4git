@@ -11,8 +11,10 @@ import type {
   ContextMenuAction,
   ContextMenuRequest,
   DiffRequest,
+  DiffWindowTab,
   ExternalDiffRequest,
   MenuAction,
+  NewWorkspaceRequest,
   PullResult,
   PushRequest,
   StrictSubmitRequest,
@@ -28,6 +30,18 @@ import { GitLabService } from './gitlab'
 let git: GitService
 let settings: SettingsStore
 let gitlab: GitLabService
+let diffWindow: BrowserWindow | undefined
+let diffTabs: DiffWindowTab[] = []
+
+function rendererTarget(window: BrowserWindow, query?: Record<string, string>): void {
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    Object.entries(query ?? {}).forEach(([key, value]) => url.searchParams.set(key, value))
+    void window.loadURL(url.toString())
+  } else {
+    void window.loadFile(join(__dirname, '../renderer/index.html'), query ? { query } : undefined)
+  }
+}
 
 function createWindow(workspace?: string): void {
   const mainWindow = new BrowserWindow({
@@ -50,12 +64,44 @@ function createWindow(workspace?: string): void {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
 
-  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
-    const url = new URL(process.env.ELECTRON_RENDERER_URL)
-    if (workspace) url.searchParams.set('workspace', workspace)
-    void mainWindow.loadURL(url.toString())
+  rendererTarget(mainWindow, workspace ? { workspace } : undefined)
+}
+
+function openDiffWindow(tabs: DiffWindowTab[]): void {
+  const incoming = tabs.filter((tab) => tab.id && tab.title)
+  for (const tab of incoming) {
+    const index = diffTabs.findIndex((candidate) => candidate.id === tab.id)
+    if (index >= 0) diffTabs[index] = tab
+    else diffTabs.push(tab)
+  }
+  if (!diffWindow || diffWindow.isDestroyed()) {
+    diffWindow = new BrowserWindow({
+      width: 1280,
+      height: 820,
+      minWidth: 760,
+      minHeight: 480,
+      show: false,
+      autoHideMenuBar: true,
+      title: 'P4Git Diff',
+      backgroundColor: '#f3f5f7',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.cjs'),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    })
+    diffWindow.on('ready-to-show', () => diffWindow?.show())
+    diffWindow.on('closed', () => { diffWindow = undefined; diffTabs = [] })
+    diffWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    diffWindow.webContents.on('will-navigate', (event) => event.preventDefault())
+    diffWindow.webContents.on('did-finish-load', () => diffWindow?.webContents.send('window:diff-tabs', diffTabs))
+    rendererTarget(diffWindow, { mode: 'diff' })
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'), workspace ? { query: { workspace } } : undefined)
+    diffWindow.webContents.send('window:diff-tabs', diffTabs)
+    if (diffWindow.isMinimized()) diffWindow.restore()
+    diffWindow.show()
+    diffWindow.focus()
   }
 }
 
@@ -83,6 +129,7 @@ function createApplicationMenu(): void {
       submenu: [
         { label: 'New Workspace Window', accelerator: 'CmdOrCtrl+Shift+N', click: () => createWindow() },
         action('Open Workspace...', 'open-workspace', 'CmdOrCtrl+O'),
+        action('New Workspace...', 'new-workspace'),
         action('Clone Repository...', 'clone'),
         action('Init Repository...', 'init'),
         { type: 'separator' }, { role: 'quit' }
@@ -300,7 +347,9 @@ function contextMenuTemplate(
         item('Revert This Commit...', 'revert-commit'),
         separator,
         gitMenu([
-          item(request.multiple ? 'Merge Selected Commits into New Changelist...' : 'Merge Commit into New Changelist...', 'git-cherry-pick'),
+          item(request.multiple ? 'Merge Selected Commits into New Changelist...' : 'Merge Commit into New Changelist...', 'merge-selected-changelist'),
+          item(request.multiple ? 'Cherry-pick Selected Commits...' : 'Cherry-pick Commit...', 'git-cherry-pick'),
+          separator,
           item('New Branch from Commit...', 'git-branch-from-commit'),
           item('Create Tag...', 'git-tag'),
           separator,
@@ -466,6 +515,15 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('settings:get', () => settings.get())
+  ipcMain.handle('settings:recent-workspaces', async () => {
+    const value = await settings.get()
+    return git.recentWorkspaces(value.recentRepositories)
+  })
+  ipcMain.handle('window:open-diff', (_event, tabs: DiffWindowTab[]) => openDiffWindow(tabs))
+  ipcMain.handle('window:get-diff-tabs', () => diffTabs)
+  ipcMain.handle('window:update-diff-tabs', (event, tabs: DiffWindowTab[]) => {
+    if (diffWindow && event.sender === diffWindow.webContents) diffTabs = tabs
+  })
   ipcMain.handle('settings:save-diff-tool', async (_event, executable?: string, argumentsTemplate?: string) => {
     const cleanPath = executable?.trim() || undefined
     if (cleanPath && !isAbsolute(cleanPath)) throw new Error('外部 Diff 工具路径必须是绝对路径。')
@@ -513,8 +571,8 @@ function registerIpc(): void {
   ipcMain.handle('git:resume-submit', (_event, repoPath: string) => git.resumeSubmit(repoPath))
   ipcMain.handle('git:prepare-submit-mr', (_event, repoPath: string) => git.prepareSubmitMergeRequest(repoPath))
   ipcMain.handle('git:complete-submit-mr', (_event, repoPath: string) => git.completeSubmitMergeRequest(repoPath))
-  ipcMain.handle('git:history', (_event, repoPath: string, limit?: number) =>
-    git.history(repoPath, limit)
+  ipcMain.handle('git:history', (_event, repoPath: string, limit?: number, offset?: number, ref?: string, firstParent?: boolean) =>
+    git.history(repoPath, limit, offset, ref, firstParent)
   )
   ipcMain.handle('git:branches', (_event, repoPath: string) => git.branches(repoPath))
   ipcMain.handle('git:list-directory', (_event, repoPath: string, relativePath?: string) =>
@@ -523,8 +581,8 @@ function registerIpc(): void {
   ipcMain.handle('git:list-tree', (_event, repoPath: string, ref: string, relativePath?: string) =>
     git.listTree(repoPath, ref, relativePath)
   )
-  ipcMain.handle('git:file-history', (_event, repoPath: string, filePath: string, limit?: number, ref?: string) =>
-    git.fileHistory(repoPath, filePath, limit, ref)
+  ipcMain.handle('git:file-history', (_event, repoPath: string, filePath: string, limit?: number, ref?: string, offset?: number) =>
+    git.fileHistory(repoPath, filePath, limit, ref, offset)
   )
   ipcMain.handle('git:file-revision-diff', (_event, repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     git.fileRevisionDiff(repoPath, filePath, ref, compareRef)
@@ -537,8 +595,8 @@ function registerIpc(): void {
   ipcMain.handle('git:commit-files', (_event, repoPath: string, hash: string) =>
     git.commitFiles(repoPath, hash)
   )
-  ipcMain.handle('git:commit-details', (_event, repoPath: string, hash: string) =>
-    git.commitDetails(repoPath, hash)
+  ipcMain.handle('git:commit-details', (_event, repoPath: string, hash: string, sourceBranch?: string) =>
+    git.commitDetails(repoPath, hash, sourceBranch)
   )
   ipcMain.handle('git:commit-diff', (_event, repoPath: string, hash: string) =>
     git.commitDiff(repoPath, hash)
@@ -627,6 +685,7 @@ function registerIpc(): void {
   )
   ipcMain.handle('git:fetch', (_event, repoPath: string) => git.fetch(repoPath))
   ipcMain.handle('git:pull', (_event, repoPath: string) => git.pull(repoPath))
+  ipcMain.handle('git:get-latest-paths', (_event, repoPath: string, ref: string, paths: string[]) => git.getLatestPaths(repoPath, ref, paths))
   ipcMain.handle('git:push', (_event, repoPath: string) => git.push(repoPath))
   ipcMain.handle('git:remotes', (_event, repoPath: string) => git.remotes(repoPath))
   ipcMain.handle('git:remote-save', (_event, repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string) => git.saveRemote(repoPath, previousName, name, fetchUrl, pushUrl))
@@ -635,6 +694,7 @@ function registerIpc(): void {
   ipcMain.handle('git:push-to', (_event, request: PushRequest) => git.pushTo(request))
   ipcMain.handle('git:operation-state', (_event, repoPath: string) => git.operationState(repoPath))
   ipcMain.handle('git:cancel', (_event, repoPath?: string) => git.cancelOperations(repoPath))
+  ipcMain.handle('git:new-workspace', (_event, request: NewWorkspaceRequest) => git.createRemoteWorkspace(request))
   ipcMain.handle('git:clone', (_event, request: CloneRequest) => git.cloneRepository(request))
   ipcMain.handle('git:init', (_event, request: InitRequest) => git.initRepository(request))
   ipcMain.handle('settings:save-navigation', (_event, bookmarks: string[], locationHistory: string[]) =>

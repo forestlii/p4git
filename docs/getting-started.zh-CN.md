@@ -36,7 +36,7 @@ P4Git 不捆绑 Git。它可以使用 Git for Windows，也可以使用其他桌
 
 ## 配置 Git
 
-P4Git 启动后先显示 P4V 风格 Workspace 选择器，不再自动打开上次的仓库。选择或双击最近 Workspace，也可以浏览其他仓库；通过 **File > New Workspace Window** 可让多个仓库在独立窗口中同时运行。
+P4Git 启动后先显示 P4V 风格 Workspace 选择器，不再自动打开上次的仓库。选择或双击最近 Workspace，也可以浏览其他仓库。**New Workspace...** 可填写 Git 服务器 URL 和一个空的本地目录：只初始化本地 Git 元数据并登记 `origin`，不会下载引用或展开文件。之后点击 **Fetch** 可只查看服务器引用而不改变文件；点击 **Get Latest** 才识别服务器默认分支、建立 upstream 并填充 Workspace。通过 **File > New Workspace Window** 可让多个仓库在独立窗口中同时运行。
 
 P4Git 启动时会依次检查：
 

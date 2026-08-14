@@ -26,8 +26,8 @@ export function p4vEntryVisual(
   const badges: P4VEntryVisual['badges'] = []
   if (change?.conflicted || change?.kind === 'conflicted') {
     badges.push({ kind: 'resolve', label: 'File needs to be resolved' })
-  } else if (change?.kind === 'untracked') {
-    badges.push({ kind: 'workspace-only', label: 'File is in the Workspace but not in the Depot' })
+  } else if (change?.kind === 'untracked' && !entry.ignored) {
+    badges.push({ kind: 'add', label: 'File is open for add by you' })
   } else if (change?.kind === 'added') {
     if (change.staged) badges.push({ kind: 'add', label: 'File is open for add by you' })
     else badges.push({ kind: 'workspace-only', label: 'File is in the Workspace but not in the Depot' })
@@ -42,7 +42,9 @@ export function p4vEntryVisual(
     if (change.staged) badges.push({ kind: 'edit', label: 'File is open for edit by you' })
     if (change.unstaged) badges.push({ kind: 'differs', label: 'Workspace file differs from the head revision' })
   } else if (source === 'workspace') {
-    if (!entry.tracked) badges.push({ kind: 'workspace-only', label: 'File is in the Workspace but not in the Depot' })
+    if (entry.ignored) {
+      // Ignored files are visible in Workspace but have no Perforce action state.
+    } else if (!entry.tracked) badges.push({ kind: 'add', label: 'File is open for add by you' })
     else if (entry.unsynced) badges.push({ kind: 'previous', label: 'File is synced to a previous server revision' })
     else badges.push({ kind: 'synced', label: 'File is synced to the head revision' })
   }

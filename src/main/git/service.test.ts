@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -20,6 +20,7 @@ async function createRepository(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'p4git-service-'))
   temporaryRepositories.push(root)
   await git(root, 'init', '-b', 'main')
+  await git(root, 'config', 'core.fsmonitor', 'false')
   await git(root, 'config', 'user.name', 'P4Git Test')
   await git(root, 'config', 'user.email', 'p4git@example.invalid')
   await writeFile(join(root, 'tracked.txt'), 'initial\n', 'utf8')
@@ -70,6 +71,8 @@ describe('GitService Git-native operations', () => {
     const fileHistory = await subject.fileHistory(root, 'tracked.txt')
     expect(fileHistory.map((commit) => commit.subject)).toEqual(['second revision', 'initial'])
     expect((await subject.fileHistory(root, 'tracked.txt', 100, fileHistory[1].hash)).map((commit) => commit.subject)).toEqual(['initial'])
+    expect((await subject.history(root, 1, 1)).map((commit) => commit.subject)).toEqual(['initial'])
+    expect((await subject.fileHistory(root, 'tracked.txt', 1, 'HEAD', 1)).map((commit) => commit.subject)).toEqual(['initial'])
     expect((await subject.fileHistory(root, '.')).length).toBe(2)
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[0].hash)).toContain('+second revision')
     expect(await subject.fileRevisionDiff(root, 'tracked.txt', fileHistory[1].hash, 'HEAD')).toContain('+second revision')
@@ -101,6 +104,27 @@ describe('GitService Git-native operations', () => {
       right: 'second revision\n',
       binary: false
     })
+  }, 15_000)
+
+  it('limits a selected Stream history to its first-parent submitted line', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature')
+    await writeFile(join(root, 'feature.txt'), 'feature\n', 'utf8')
+    await git(root, 'add', 'feature.txt')
+    await git(root, 'commit', '-m', 'feature side commit')
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'main.txt'), 'main\n', 'utf8')
+    await git(root, 'add', 'main.txt')
+    await git(root, 'commit', '-m', 'main line commit')
+    await git(root, 'merge', '--no-ff', 'feature', '-m', 'merge feature')
+
+    expect((await subject.history(root, 100, 0, 'main')).map((commit) => commit.subject)).toContain('feature side commit')
+    expect((await subject.history(root, 100, 0, 'main', true)).map((commit) => commit.subject)).toEqual([
+      'merge feature',
+      'main line commit',
+      'initial'
+    ])
   }, 15_000)
 
   it('returns a unified patch for an untracked text file', async () => {
@@ -214,6 +238,62 @@ describe('GitService Git-native operations', () => {
       isDirectory: false,
       tracked: true
     })
+  }, 15_000)
+
+  it('reuses one repository path index while expanding multiple Workspace folders', async () => {
+    const root = await createRepository()
+    await mkdir(join(root, 'Assets', 'Nested'), { recursive: true })
+    await writeFile(join(root, 'Assets', 'one.txt'), 'one\n', 'utf8')
+    await writeFile(join(root, 'Assets', 'Nested', 'two.txt'), 'two\n', 'utf8')
+    await git(root, 'add', 'Assets')
+    await git(root, 'commit', '-m', 'nested files')
+    const subject = service()
+    const instrumented = subject as unknown as { run(cwd: string, args: string[]): Promise<string> }
+    const originalRun = instrumented.run.bind(subject)
+    let trackedIndexReads = 0
+    instrumented.run = async (cwd, args) => {
+      if (args[0] === 'ls-files' && args.includes('--cached')) trackedIndexReads += 1
+      return originalRun(cwd, args)
+    }
+
+    await subject.listDirectory(root)
+    await subject.listDirectory(root, 'Assets')
+    await subject.listDirectory(root, 'Assets/Nested')
+
+    expect(trackedIndexReads).toBe(1)
+  }, 15_000)
+
+  it('marks ignored Workspace entries without scanning every ignored file in the repository', async () => {
+    const root = await createRepository()
+    await writeFile(join(root, '.gitignore'), 'Generated/\n*.cache\n', 'utf8')
+    await mkdir(join(root, 'Generated'), { recursive: true })
+    await writeFile(join(root, 'Generated', 'large.cache'), 'ignored\n', 'utf8')
+    await writeFile(join(root, 'local.cache'), 'ignored\n', 'utf8')
+    await writeFile(join(root, 'local.txt'), 'visible\n', 'utf8')
+    const subject = service()
+
+    const entries = await subject.listDirectory(root)
+    expect(entries.find((entry) => entry.path === 'Generated')?.ignored).toBe(true)
+    expect(entries.find((entry) => entry.path === 'local.cache')?.ignored).toBe(true)
+    expect(entries.find((entry) => entry.path === 'local.txt')?.ignored).toBe(false)
+  }, 15_000)
+
+  it('updates only selected clean paths and refuses to overwrite local changes', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'server-state')
+    await writeFile(join(root, 'tracked.txt'), 'server revision\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'server revision')
+    await git(root, 'switch', 'main')
+
+    await subject.getLatestPaths(root, 'server-state', ['tracked.txt'])
+    expect(normalizeLines(await readFile(join(root, 'tracked.txt'), 'utf8'))).toBe('server revision\n')
+    expect((await git(root, 'branch', '--show-current')).trim()).toBe('main')
+
+    await writeFile(join(root, 'tracked.txt'), 'local edit\n', 'utf8')
+    await expect(subject.getLatestPaths(root, 'server-state', ['tracked.txt'])).rejects.toThrow('本地变更')
+    expect(normalizeLines(await readFile(join(root, 'tracked.txt'), 'utf8'))).toBe('local edit\n')
   }, 15_000)
 
   it('fast-forwards Get Latest and reports diverged branches without changing local history', async () => {
@@ -388,9 +468,12 @@ describe('GitService Git-native operations', () => {
     const graph = await subject.graph(root)
     expect(graph[0]).toMatchObject({ hash: change, subject: 'change to undo' })
     expect(graph[0].parents).toHaveLength(1)
-    await expect(subject.commitDetails(root, change)).resolves.toMatchObject({
+    await git(root, 'branch', 'release-test', change)
+    await expect(subject.commitDetails(root, change, 'release-test')).resolves.toMatchObject({
       hash: change,
       message: 'change to undo',
+      sourceBranch: 'release-test',
+      branches: ['release-test', 'main'],
       files: [{ kind: 'M', path: 'tracked.txt' }]
     })
 
@@ -432,6 +515,32 @@ describe('GitService Git-native operations', () => {
     expect((await subject.graph(root))[0].parents).toHaveLength(2)
   }, 20_000)
 
+  it('waits for an external three-way Merge result and refuses unresolved conflict markers', async () => {
+    const root = await createRepository()
+    await git(root, 'switch', '-c', 'external-merge-feature')
+    await writeFile(join(root, 'tracked.txt'), 'feature version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'external feature edit')
+    await git(root, 'switch', 'main')
+    await writeFile(join(root, 'tracked.txt'), 'main version\n', 'utf8')
+    await git(root, 'add', 'tracked.txt')
+    await git(root, 'commit', '-m', 'external main edit')
+    await expect(git(root, 'merge', 'external-merge-feature')).rejects.toBeDefined()
+
+    const noOp = join(root, 'merge-no-op.cjs')
+    await writeFile(noOp, 'process.exit(0)\n', 'utf8')
+    const unresolved = service({ mergeToolPath: process.execPath, mergeToolArguments: `"${noOp}" "{result}"` })
+    await expect(unresolved.launchExternalMerge(root, 'tracked.txt')).rejects.toThrow('仍包含冲突标记')
+    await expect(unresolved.conflicts(root)).resolves.toHaveLength(1)
+
+    const resolver = join(root, 'merge-resolve.cjs')
+    await writeFile(resolver, "require('node:fs').writeFileSync(process.argv[2], 'external merged\\n')\n", 'utf8')
+    const resolved = service({ mergeToolPath: process.execPath, mergeToolArguments: `"${resolver}" "{result}"` })
+    await expect(resolved.launchExternalMerge(root, 'tracked.txt')).resolves.toBe(true)
+    await expect(resolved.conflicts(root)).resolves.toHaveLength(0)
+    expect(normalizeLines(await readFile(join(root, 'tracked.txt'), 'utf8'))).toBe('external merged\n')
+  }, 20_000)
+
   it('selectively merges multiple commits into the current branch in parent order', async () => {
     const root = await createRepository()
     const subject = service()
@@ -458,6 +567,33 @@ describe('GitService Git-native operations', () => {
     expect(comparison.incoming).toEqual([])
     expect(comparison.integrated.map((commit) => commit.subject)).toEqual(['selected second', 'selected first'])
     await expect(subject.cherryPickCommits(root, [first])).rejects.toThrow('已经包含在当前分支中')
+  }, 20_000)
+
+  it('orders all selected commits by ancestry even when unselected commits separate them', async () => {
+    const root = await createRepository()
+    const subject = service()
+    await git(root, 'switch', '-c', 'feature-with-gap')
+    await writeFile(join(root, 'first-selected.txt'), 'first\n', 'utf8')
+    await git(root, 'add', 'first-selected.txt')
+    await git(root, 'commit', '-m', 'first selected around gap')
+    const first = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(root, 'not-selected.txt'), 'gap\n', 'utf8')
+    await git(root, 'add', 'not-selected.txt')
+    await git(root, 'commit', '-m', 'unselected gap')
+    await writeFile(join(root, 'last-selected.txt'), 'last\n', 'utf8')
+    await git(root, 'add', 'last-selected.txt')
+    await git(root, 'commit', '-m', 'last selected around gap')
+    const last = (await git(root, 'rev-parse', 'HEAD')).trim()
+    await git(root, 'switch', 'main')
+
+    await subject.cherryPickCommits(root, [last, first])
+
+    expect((await git(root, 'log', '-2', '--format=%s')).trim().split(/\r?\n/)).toEqual([
+      'last selected around gap',
+      'first selected around gap'
+    ])
+    expect(normalizeLines(await readFile(join(root, 'first-selected.txt'), 'utf8'))).toBe('first\n')
+    expect(normalizeLines(await readFile(join(root, 'last-selected.txt'), 'utf8'))).toBe('last\n')
   }, 20_000)
 
   it('keeps the remaining selected commits queued while a conflict is resolved', async () => {
@@ -655,7 +791,41 @@ describe('GitService Git-native operations', () => {
     await git(initialized, 'add', 'README.md')
     await git(initialized, 'commit', '-m', 'initial')
 
+    await expect(subject.recentWorkspaces([initialized, join(parent, 'missing')])).resolves.toMatchObject([
+      { path: initialized, name: 'initialized', branch: 'develop', available: true },
+      { path: join(parent, 'missing'), name: 'missing', available: false }
+    ])
+
     await expect(subject.cloneRepository({ url: initialized, parentDirectory: parent, folderName: 'cloned' })).resolves.toBe(cloned)
     expect(normalizeLines(await readFile(join(cloned, 'README.md'), 'utf8'))).toBe('# Initialized\n')
   }, 20_000)
+
+  it('creates an empty remote-backed Workspace without fetching, then populates it on first Get Latest', async () => {
+    const source = await createRepository()
+    await writeFile(join(source, 'server-only.txt'), 'server content\n', 'utf8')
+    await git(source, 'add', 'server-only.txt')
+    await git(source, 'commit', '-m', 'server content')
+    const parent = await mkdtemp(join(tmpdir(), 'p4git-service-'))
+    temporaryRepositories.push(parent)
+    const remote = join(parent, 'remote.git')
+    const workspace = join(parent, 'empty-workspace')
+    const nonEmpty = join(parent, 'non-empty')
+    await mkdir(nonEmpty)
+    await writeFile(join(nonEmpty, 'keep.txt'), 'do not overwrite\n', 'utf8')
+    await git(parent, 'init', '--bare', '--initial-branch=main', remote)
+    await git(source, 'remote', 'add', 'new-workspace-test', remote)
+    await git(source, 'push', 'new-workspace-test', 'main')
+    const subject = service()
+
+    await expect(subject.createRemoteWorkspace({ url: remote, directory: nonEmpty })).rejects.toThrow('本地目录必须为空')
+    await expect(subject.createRemoteWorkspace({ url: remote, directory: workspace })).resolves.toBe(workspace)
+    expect((await git(workspace, 'remote', 'get-url', 'origin')).trim().replaceAll('\\', '/')).toBe(remote.replaceAll('\\', '/'))
+    expect((await readdir(workspace)).filter((name) => name !== '.git')).toEqual([])
+    await expect(subject.branches(workspace)).resolves.toEqual([])
+    await expect(subject.summary(workspace)).resolves.toMatchObject({ branch: 'main', remoteUrl: remote, changes: [] })
+
+    await expect(subject.pull(workspace)).resolves.toMatchObject({ outcome: 'fast-forwarded', upstream: 'origin/main', ahead: 0, behind: 2 })
+    expect(normalizeLines(await readFile(join(workspace, 'server-only.txt'), 'utf8'))).toBe('server content\n')
+    expect((await git(workspace, 'rev-parse', '--abbrev-ref', '@{upstream}')).trim()).toBe('origin/main')
+  }, 25_000)
 })

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, ExternalDiffRequest, InitRequest, MenuAction, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest, StrictSubmitRequest, ViewTab } from '../shared/types'
+import type { AbortOperation, AppearanceSettings, CheckoutRequest, CloneRequest, ConflictResolution, ContextMenuRequest, DiffRequest, DiffWindowTab, ExternalDiffRequest, InitRequest, MenuAction, NewWorkspaceRequest, P4GitApi, PullResult, PushRequest, ResetMode, SelectiveMergeRequest, StrictSubmitRequest, ViewTab } from '../shared/types'
 
 const api: P4GitApi = {
   chooseRepository: () => ipcRenderer.invoke('dialog:choose-repository'),
@@ -10,6 +10,7 @@ const api: P4GitApi = {
   chooseCloneParent: () => ipcRenderer.invoke('dialog:choose-clone-parent'),
   chooseInitDirectory: () => ipcRenderer.invoke('dialog:choose-init-directory'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  getRecentWorkspaces: () => ipcRenderer.invoke('settings:recent-workspaces'),
   saveDiffSettings: (executable?: string, argumentsTemplate?: string) =>
     ipcRenderer.invoke('settings:save-diff-tool', executable, argumentsTemplate),
   savePreferences: (diffExecutable: string | undefined, diffArguments: string | undefined, mergeExecutable: string | undefined, mergeArguments: string | undefined, appearance: AppearanceSettings) =>
@@ -29,25 +30,33 @@ const api: P4GitApi = {
   resumeSubmit: (repoPath: string) => ipcRenderer.invoke('git:resume-submit', repoPath),
   prepareSubmitMergeRequest: (repoPath: string) => ipcRenderer.invoke('git:prepare-submit-mr', repoPath),
   completeSubmitMergeRequest: (repoPath: string) => ipcRenderer.invoke('git:complete-submit-mr', repoPath),
-  getHistory: (repoPath: string, limit?: number) =>
-    ipcRenderer.invoke('git:history', repoPath, limit),
+  getHistory: (repoPath: string, limit?: number, offset?: number, ref?: string, firstParent?: boolean) =>
+    ipcRenderer.invoke('git:history', repoPath, limit, offset, ref, firstParent),
   getBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),
   listDirectory: (repoPath: string, relativePath = '') =>
     ipcRenderer.invoke('git:list-directory', repoPath, relativePath),
   listTree: (repoPath: string, ref: string, relativePath = '') =>
     ipcRenderer.invoke('git:list-tree', repoPath, ref, relativePath),
-  getFileHistory: (repoPath: string, filePath: string, limit?: number, ref?: string) =>
-    ipcRenderer.invoke('git:file-history', repoPath, filePath, limit, ref),
+  getFileHistory: (repoPath: string, filePath: string, limit?: number, ref?: string, offset?: number) =>
+    ipcRenderer.invoke('git:file-history', repoPath, filePath, limit, ref, offset),
   getFileRevisionDiff: (repoPath: string, filePath: string, ref: string, compareRef?: string) =>
     ipcRenderer.invoke('git:file-revision-diff', repoPath, filePath, ref, compareRef),
   getDiffDocument: (request: ExternalDiffRequest) => ipcRenderer.invoke('git:diff-document', request),
   launchExternalDiff: (request: ExternalDiffRequest) => ipcRenderer.invoke('git:external-diff', request),
+  openDiffWindow: (tabs: DiffWindowTab[]) => ipcRenderer.invoke('window:open-diff', tabs),
+  getDiffWindowTabs: () => ipcRenderer.invoke('window:get-diff-tabs'),
+  updateDiffWindowTabs: (tabs: DiffWindowTab[]) => ipcRenderer.invoke('window:update-diff-tabs', tabs),
+  onDiffWindowTabs: (callback: (tabs: DiffWindowTab[]) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, tabs: DiffWindowTab[]): void => callback(tabs)
+    ipcRenderer.on('window:diff-tabs', listener)
+    return () => ipcRenderer.removeListener('window:diff-tabs', listener)
+  },
   getBlame: (repoPath: string, filePath: string, ref?: string) =>
     ipcRenderer.invoke('git:blame', repoPath, filePath, ref),
   getCommitFiles: (repoPath: string, hash: string) =>
     ipcRenderer.invoke('git:commit-files', repoPath, hash),
-  getCommitDetails: (repoPath: string, hash: string) =>
-    ipcRenderer.invoke('git:commit-details', repoPath, hash),
+  getCommitDetails: (repoPath: string, hash: string, sourceBranch?: string) =>
+    ipcRenderer.invoke('git:commit-details', repoPath, hash, sourceBranch),
   getCommitDiff: (repoPath: string, hash: string) =>
     ipcRenderer.invoke('git:commit-diff', repoPath, hash),
   getGraph: (repoPath: string, limit?: number) => ipcRenderer.invoke('git:graph', repoPath, limit),
@@ -111,6 +120,7 @@ const api: P4GitApi = {
   checkout: (request: CheckoutRequest) => ipcRenderer.invoke('git:checkout', request),
   fetch: (repoPath: string) => ipcRenderer.invoke('git:fetch', repoPath),
   pull: (repoPath: string) => ipcRenderer.invoke('git:pull', repoPath),
+  getLatestPaths: (repoPath: string, ref: string, paths: string[]) => ipcRenderer.invoke('git:get-latest-paths', repoPath, ref, paths),
   push: (repoPath: string) => ipcRenderer.invoke('git:push', repoPath),
   getRemotes: (repoPath: string) => ipcRenderer.invoke('git:remotes', repoPath),
   saveRemote: (repoPath: string, previousName: string | undefined, name: string, fetchUrl: string, pushUrl?: string) => ipcRenderer.invoke('git:remote-save', repoPath, previousName, name, fetchUrl, pushUrl),
@@ -119,6 +129,7 @@ const api: P4GitApi = {
   pushTo: (request: PushRequest) => ipcRenderer.invoke('git:push-to', request),
   getOperationState: (repoPath: string) => ipcRenderer.invoke('git:operation-state', repoPath),
   cancelOperations: (repoPath?: string) => ipcRenderer.invoke('git:cancel', repoPath),
+  createRemoteWorkspace: (request: NewWorkspaceRequest) => ipcRenderer.invoke('git:new-workspace', request),
   cloneRepository: (request: CloneRequest) => ipcRenderer.invoke('git:clone', request),
   initRepository: (request: InitRequest) => ipcRenderer.invoke('git:init', request),
   saveNavigation: (bookmarks: string[], locationHistory: string[]) =>

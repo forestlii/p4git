@@ -2,6 +2,112 @@
 
 All notable changes to P4Git are documented in this file.
 
+## 0.18.0 — 2026-08-14
+
+### English
+
+- Added **New Workspace...** to the startup connection dialog and File menu. It accepts a Git server URL and empty local directory, initializes Git with `origin`, and opens without contacting the server, Fetching refs, Cloning, or checking out files.
+- New remote-backed Workspaces distinguish the deferred operations clearly: Fetch downloads refs without touching files, while the first Get Latest discovers the server's advertised default branch, creates the local tracking branch, and populates the Workspace.
+- New Workspace rejects non-empty local directories, and the first Get Latest refuses to overwrite files added before synchronization.
+- Added an integration test with a two-commit bare server repository proving that creation remains empty and the first Get Latest establishes `origin/main` correctly.
+
+### 中文
+
+- 启动连接界面和 File 菜单新增 **New Workspace...**：填写 Git 服务器 URL 与空本地目录后，只初始化 Git 并登记 `origin`，不连接服务器、不 Fetch、不 Clone、也不 Checkout 文件。
+- 空的远端 Workspace 明确区分延迟操作：Fetch 只下载引用、不改变文件；第一次 Get Latest 会识别服务器公布的默认分支、创建本地跟踪分支并填充 Workspace。
+- New Workspace 会拒绝非空本地目录；首次同步前如果加入了本地文件，Get Latest 也会拒绝覆盖。
+- 新增两提交裸服务器集成测试，验证创建后目录保持为空，并在首次 Get Latest 后正确建立 `origin/main`。
+
+## 0.17.0 — 2026-08-14
+
+### English
+
+- Submitted Change Details now reports the branch used to open the change and every local/remote branch whose tip contains the commit. The viewing branch is ordered first, matching Git's many-branches-per-commit model without pretending a commit has one owner.
+- Commit title and full description now have explicit Copy actions alongside the existing copyable hashes, author, date, parents, branch information, and full changed-file paths.
+- Merge, Rebase, Cherry-pick, Revert, selective Changelist merge, Submit/Rebase, and Get Latest conflicts now automatically invoke the configured three-way Merge tool for every conflict and wait for each result.
+- An auto-detected or configured Beyond Compare Diff executable is reused as the three-way Merge tool when no separate Merge executable is configured. Each returned result is rechecked; unresolved markers, cancellation, missing executables, and launch failures fall back safely to built-in Resolve.
+
+### 中文
+
+- Submitted Change Details 现在显示打开该提交时所处的来源分支，以及能够到达该 Commit 的全部本地/远程分支；查看来源排在首位，遵循“一个 Git Commit 可同时存在于多个分支”的真实语义。
+- Commit 标题和完整说明增加明确的复制按钮；原有 Hash、作者、日期、Parents、分支信息以及完整变更路径也继续支持复制。
+- Merge、Rebase、Cherry-pick、Revert、选择性 Changelist 合并、Submit/Rebase 和 Get Latest 产生冲突后，会自动逐文件调用已配置的三方 Merge 工具并等待结果。
+- 未单独配置 Merge 程序时，自动发现或配置的 Beyond Compare Diff 程序会复用于三方合并；每个返回结果都会复检，仍含冲突标记、取消、程序缺失或启动失败时安全回退内置 Resolve。
+
+## 0.16.0 — 2026-08-13
+
+### English
+
+- Fixed Depot/Workspace selection painting outside the left pane while Pending is active. The tree now has an isolated paint boundary while preserving horizontal scrolling for long names.
+- Submitted Change Details shows complete current and previous file paths with wrapping instead of ellipses.
+- Submitted Change Details metadata is selectable and every top field has an explicit Copy action, including full commit and parent hashes.
+- Stream Graph right-click selection now uses a synchronous snapshot so all Ctrl/Shift-selected rows reach the operation, rather than occasionally falling back to the focused commit.
+- Multi-commit Changelist merges order every selected commit by ancestry even when unselected commits occur between them; all selected patches are applied and conflicts continue through the existing Resolve workflow.
+- The Submitted/Stream Graph Git submenu now separates **Merge Selected Commits into New Changelist** from a real single/multi-commit **Cherry-pick** command. Cherry-pick creates Git commits and continues remaining selections after Resolve.
+
+### 中文
+
+- 修复 Pending 激活时 Depot/Workspace 选中背景越出左侧面板的问题；树增加独立绘制边界，同时保留长文件名的横向滚动。
+- Submitted Change Details 中当前路径和旧路径改为完整换行显示，不再使用省略号。
+- Submitted Change Details 顶部信息可选中，并为每个字段提供明确的 Copy 操作，包括完整 Commit 与 Parent Hash。
+- Stream Graph 右键操作改用同步的多选快照，确保 Ctrl/Shift 选中的所有行都会传入操作，不再偶发退化为焦点提交。
+- 多提交 Changelist 合并按祖先关系排列全部选中提交，即使中间夹有未选提交也能保持正确顺序；冲突继续使用现有 Resolve 流程处理剩余提交。
+- Submitted/Stream Graph 的 Git 子菜单将 **合并选中提交到新 Changelist** 与真正的单条/多条 **Cherry-pick** 分离；Cherry-pick 会创建 Git Commit，并在 Resolve 后继续剩余选择。
+
+## 0.15.0 — 2026-08-13
+
+### English
+
+- Workspace expansion builds tracked and upstream-difference metadata once per repository instead of starting three Git processes for every folder. Duplicate loads are coalesced and the former 24/48-folder automatic prefetch fan-out is removed.
+- Ignored state is checked only for immediate untracked entries of the opened directory and cached, avoiding a repository-wide ignored-file scan in large Unity workspaces.
+- Tree filtering, status sorting, and file/lock lookup use memoized indexes; off-screen rows use layout containment hints, making expansion and collapse responsive with large cached trees.
+- Submitted history appears before the heavier revision graph finishes in the background. A persistent filter no longer forces every remaining page to load, repeated upstream/local-only checks are shared, and Git log no longer runs a separate HEAD probe.
+- Selecting a Branch/Stream shows that ref's paged **first-parent** Submitted history, keeping merge submissions while excluding commits that only entered through a merged side branch.
+
+### 中文
+
+- Workspace 展开目录时，tracked 与远端差异元数据改为每个仓库只构建一次，不再为每个目录启动 3 个 Git 进程；重复加载会合并，原先自动预取 24/48 个目录的进程风暴已移除。
+- ignored 状态只检查当前打开目录直属的未跟踪条目并缓存，避免在大型 Unity Workspace 中全仓扫描 ignored 文件。
+- 树筛选、状态排序、文件状态和 Lock 查找改用记忆化索引，屏幕外行启用布局隔离，大型树的展开与收起都更顺畅。
+- Submitted 会先于较重的 Revision Graph 显示；持久 Filter 不再强制一次加载全部剩余历史页，upstream/local-only 检查会共享，Git log 也不再额外探测一次 HEAD。
+- 选中 Branch/Stream 后显示该引用可分页的 **first-parent** Submitted 历史：保留 Merge 提交本身，同时排除仅通过旁支 Merge 进入的内部提交。
+
+## 0.14.0 — 2026-08-13
+
+### English
+
+- Repository, file, and folder History/Submitted views now page through the complete Git history in stable 100-row batches, load near the scroll boundary, deduplicate by commit hash, and ignore stale responses after navigation or branch changes.
+- Long commit lists use browser content virtualization hints so off-screen cells do not pay full rendering cost; loading and end-of-history states are visible.
+- The Workspace selector shows every recent repository's current branch, including disabled status for missing repositories, and refreshes after opening or switching branches.
+- **Get Latest** now respects the selected Workspace/Depot file or folder. It fetches first, updates only that path from the appropriate upstream/ref, and refuses to overwrite overlapping local changes.
+- Branches/Streams rows are left-click selectable. The right side shows that branch's Submitted records with paging, expansion and multi-selection; the existing context command applies selected commits into a new local Changelist and enters Resolve on conflicts.
+
+### 中文
+
+- 仓库、文件和文件夹的 History/Submitted 现在以稳定的每页 100 条加载完整 Git 历史；接近滚动底部时续载，以提交 Hash 去重，并在切换路径或分支后丢弃过期响应。
+- 长提交列表使用浏览器内容虚拟化提示，屏幕外 Cell 不再承担完整渲染成本，同时明确显示加载中和已到历史末尾状态。
+- 左侧 Workspace 切换器显示所有最近仓库的当前分支，路径失效时禁用，并在打开仓库或切换分支后刷新。
+- **Get Latest** 支持当前选中的 Workspace/Depot 文件或文件夹：先 Fetch，再从对应 upstream/ref 仅更新所选范围；范围内存在本地变更时拒绝覆盖。
+- Branches/Streams 支持左键选中，右侧显示该分支可分页、展开和多选的 Submitted；右键沿用现有命令，把选中提交应用到新的本地 Changelist，冲突时进入 Resolve。
+
+## 0.13.0 — 2026-08-13
+
+### English
+
+- Built-in comparisons now open in one reusable standalone Diff window. Each comparison gets a Chrome-style tab that can be selected or closed independently, including Pending multi-selection batches.
+- Horizontal scrollbars remain available at the bottom of both CodeMirror and unified side-by-side comparisons instead of appearing only after scrolling to the end of the document.
+- Depot and Workspace folders expand immediately, load missing children asynchronously, prefetch the next directory level, cache repository roots, and reduce repeated Git metadata processes.
+- The connection screen refreshes recent Workspaces and shows the current Git branch beside every valid entry; missing repositories are identified and disabled.
+- Non-ignored files that exist only in the Workspace use a green `+` and the `add` action. The redundant top-toolbar Add button was removed; its Git staging command remains available from menus and Pending workflows.
+
+### 中文
+
+- 内置比较统一在可复用的独立 Diff 窗口中打开；每次比较使用一个类似 Chrome 的页签，可独立切换和关闭，Pending 多选也会一次生成多个页签。
+- CodeMirror 和统一补丁双栏比较的底部横向滚动条保持可见，不再需要先滚动到文档末尾。
+- Depot/Workspace 文件夹点击后立即展开，缺失内容在后台加载，同时预取下一层目录、缓存仓库根路径并减少重复 Git 元数据进程。
+- 登录界面会刷新 Recent Workspace，并在每个有效工作区旁显示当前 Git 分支；路径失效的工作区会明确标记并禁用。
+- 仓库中不存在、本地存在且未被忽略的文件统一显示绿色 `+` 和 `add` 状态；删除了顶部重复的 Add 按钮，Git 暂存仍可通过菜单和 Pending 流程使用。
+
 ## 0.8.0 — 2026-08-12
 
 ### English

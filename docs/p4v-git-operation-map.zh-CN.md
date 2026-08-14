@@ -26,16 +26,16 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 | Time-lapse View | `git blame` 逐行作者、提交和时间 | 已实现，简化版 |
 | Revision Graph / Stream Graph | 使用 commit parent 关系绘制多轨拓扑，支持 ref 模糊筛选、分支栏调宽，以及从本地或远程分支 Work in this Stream | 已实现 |
 | 从其他分支选择变更 | 查看提交/文件、过滤等价补丁，再把所选改动不提交地放入新本地 Changelist；Resolve 与 Continue 保留剩余队列 | 已实现；Merge commit 仍需单独指定 mainline |
-| Resolve | 读取 Git index 的 Base/Ours/Theirs 三个 stage，支持选边、手工合并和 Continue | 已实现 |
+| Resolve | 读取 Git index 的 Base/Ours/Theirs stage；自动调用并复检已配置三方工具（含复用 Beyond Compare Diff），失败时回退内置选边/逐块编辑，再 Continue | 已实现 |
 | Pending changelist | Ready 映射为 Git index；本地持久化的多个命名列表用于整理未暂存改动 | 已实现，本地语义 |
 | Shelve / Unshelve | Changelist 映射为带 P4Git 元数据的本地 Git stash，恢复时还原文件归组 | 已实现，本地语义 |
 | Submit | Fetch、commit、安全 Rebase/Resolve、Push 并验证服务器目标引用；被拒绝的提交明确标为 Local only 且可重试 | 已实现 |
-| Submitted | Git log；展开文件、P4V 风格提交详情、上一版本/本地文件 Diff、复制 hash，并用 `git revert` 撤销所选提交 | 已实现 |
+| Submitted | Git log；展开文件、P4V 风格详情显示查看来源/包含分支，复制元数据/标题/说明，上一版本/本地文件 Diff，并用 `git revert` 撤销提交 | 已实现 |
 | Jobs | GitLab Issues | GitLab 项目已配置时实现 |
 | 文件/目录 History | Depot 和 Workspace 选择均联动 History/Submitted，按所选 ref/path 筛选且不切换页签 | 已实现 |
 | 界面 Filter | 多字段 Contains/Starts with/正则筛选，支持大小写匹配和表达式校验 | 已实现 |
 | View 管理页签 | 主页签可关闭，由带勾选状态的 View 菜单恢复并持久保存状态 | 已实现 |
-| Workspaces | P4V 风格启动选择器、最近本地仓库和独立多窗口打开 | 已实现 |
+| Workspaces | P4V 风格选择器、最近仓库、独立多窗口，以及延迟 Fetch/Get Latest 的空远端 New Workspace | 已实现 |
 | 原生右键菜单 | 按 Workspace、Depot、Pending、Submitted、Branch 等对象显示适用操作；Changelist 文件可双向定位树 | 已实现 |
 | 可拖动次级界面 | 拖动模态窗口标题栏，并可双击恢复居中 | 已实现 |
 | Log | 显示命令意图、成功或错误，可右键清空 | 已实现 |
@@ -63,7 +63,7 @@ P4Git 参考 Perforce 官方文档中的 [P4V 基本概念](https://help.perforc
 - Merge、Rebase、Cherry-pick，以及对应的 Abort 操作。
 - Soft、Mixed、Hard Reset，轻量 Tags，以及从提交/ref 新建分支。
 - 文件级 Stage、Unstage、Stash；分支安全删除；指定 Workspace 的 Fetch、Pull、Push。
-- File 菜单中的 Clone/Init；GitLab 面板中的 MR 创建、MR/Pipeline/Issue 浏览。
+- File 菜单中的 New Workspace/Clone/Init；GitLab 面板中的 MR 创建、MR/Pipeline/Issue 浏览。
 - Remote 管理、Push 提交预览、分支重命名与 Incoming/Outgoing 比较、Amend。
 
 仍待实现：

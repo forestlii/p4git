@@ -9,7 +9,12 @@ describe('P4V-style file visuals', () => {
   it('distinguishes synced, previous, and workspace-only files', () => {
     expect(p4vEntryVisual(file(), 'workspace').badges.map((badge) => badge.kind)).toEqual(['synced'])
     expect(p4vEntryVisual(file({ unsynced: true }), 'workspace').badges.map((badge) => badge.kind)).toEqual(['previous'])
-    expect(p4vEntryVisual(file({ tracked: false }), 'workspace').badges.map((badge) => badge.kind)).toEqual(['workspace-only'])
+    expect(p4vEntryVisual(file({ tracked: false }), 'workspace').badges.map((badge) => badge.kind)).toEqual(['add'])
+  })
+
+  it('shows every non-ignored untracked file as an Add action', () => {
+    expect(p4vEntryVisual(file({ tracked: false }), 'workspace', change({ kind: 'untracked' })).badges.map((badge) => badge.kind)).toEqual(['add'])
+    expect(p4vEntryVisual(file({ tracked: false, ignored: true }), 'workspace').badges).toEqual([])
   })
 
   it('uses red action semantics and supports combined badges', () => {

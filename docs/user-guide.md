@@ -92,7 +92,7 @@ On Windows, P4Git automatically discovers `C:\Program Files\Beyond Compare 5\BCo
 
 ## Workspace selection and multiple windows
 
-Launch opens the Workspace chooser and preselects the most recently used repository without connecting automatically. **File > New Workspace Window** opens another chooser, while a Workspaces-row context menu can open that repository directly in a new window. Repository selection, branch, tabs, tasks, and cancellation are scoped to that window and Workspace.
+Launch opens the Workspace chooser and preselects the most recently used repository without connecting automatically. **New Workspace...** creates an empty local repository with only an `origin` URL; it deliberately performs no network request, Fetch, Clone, or checkout. The selected local directory must be empty. **File > New Workspace Window** opens another chooser, while a Workspaces-row context menu can open that repository directly in a new window. Repository selection, branch, tabs, tasks, and cancellation are scoped to that window and Workspace.
 
 ## Submit Changelist
 
@@ -107,9 +107,9 @@ If Rebase conflicts, Submit pauses in Resolve and Continue resumes the same serv
 
 ## Submitted
 
-The **Submitted** table shows up to 100 recent Git commits using P4V-style columns: Change, Date Submitted, Submitted By, and Description. Selecting a row displays its full hash, author, date, and subject in **Details**.
+The **Submitted** table loads the complete Git history in 100-row pages using P4V-style columns: Change, Date Submitted, Submitted By, and Description. More rows load near the scroll boundary. Selecting a row displays its full hash, author, date, and subject in **Details**.
 
-The disclosure arrow expands a commit's changed files in place. **View Details...** opens a P4V-style window with the complete description, author, date, parents, and changed-file statuses. Right-click a file in that window to compare it with its previous revision or the local Workspace copy (using the configured external Diff tool when available), or copy its path. Add/delete and rename comparisons use empty or old-path sources as appropriate. Other context actions expose the full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
+The disclosure arrow expands a commit's changed files in place. **View Details...** opens a P4V-style window with the title, complete description, author, date, parents, viewing source, every local/remote branch that contains the commit, and changed-file statuses. Git commits are not owned by one branch, so the containing-branch list is the accurate equivalent of a P4V Stream label. Every top value, title, and description has an explicit Copy action. Right-click a file in that window to compare it with its previous revision or the local Workspace copy (using the configured external Diff tool when available), or copy its path. Add/delete and rename comparisons use empty or old-path sources as appropriate. Other context actions expose the full diff against the parent, full-hash copy, a history-preserving `git revert --no-edit`, Cherry-pick, branch/tag creation, and Reset. Revert conflicts enter the Resolve workflow. Interactive rebase is not yet included.
 
 ## History
 
@@ -123,9 +123,9 @@ The table lists Git revisions with an approximate file revision number, commit h
 
 ## Resolving conflicts
 
-Open **Tools > Git > Resolve Conflicts** for the three-way resolver. The selected file shows Base, Ours, Theirs, and the current workspace Result. Standard conflict blocks can be resolved one at a time with Ours, Theirs, or Both; the entire result remains editable. A configured external 3-way Merge tool can write the result directly. Binary conflicts use whole-file Ours/Theirs or the external tool. After every file is resolved, **Continue Operation** resumes the active operation.
+Open **Tools > Git > Resolve Conflicts** for the three-way resolver. When conflicts are created, P4Git first launches the configured external 3-way Merge tool for each file with Base/Ours/Theirs/Result inputs and waits for it to close. An auto-detected/configured Beyond Compare Diff executable is also reused for three-way Merge when no separate Merge executable is set. P4Git rechecks the file after each tool exit and does not stage a text result that still contains Git conflict markers. Missing tools, cancellation, launch errors, or unresolved results fall back to the built-in resolver. There the selected file shows Base, Ours, Theirs, and the current workspace Result; standard conflict blocks can be resolved one at a time with Ours, Theirs, or Both, and binary conflicts use whole-file choices. After every file is resolved, **Continue Operation** resumes the active operation.
 
-If Merge, Rebase, Cherry-pick, Revert, or Get Latest produces conflicts, P4Git opens Resolve automatically. The status bar shows the operation, conflict count, and when Continue is ready.
+If Merge, Rebase, Cherry-pick, Revert, selective Changelist merge, Submit/Rebase, or Get Latest produces conflicts, P4Git starts that external-first Resolve flow automatically. The status bar shows the operation, conflict count, and when Continue is ready.
 
 ## Selection, Layout, Tasks, and LFS Locks
 
@@ -153,7 +153,7 @@ Git blocks a switch that would overwrite local changes; P4Git displays that erro
 
 ## Workspaces
 
-**Workspaces** lists recent repositories. Double-click a row to open it. Use **File > Open Workspace** for an existing repository, **File > Clone Repository** for a remote URL and parent folder, or **File > Init Repository** to create a repository with a selected initial branch.
+**Workspaces** lists recent repositories. Double-click a row to open it. Use **File > Open Workspace** for an existing repository, **File > Clone Repository** to download and check out a server repository immediately, **File > New Workspace** to configure a server while leaving the local tree empty, or **File > Init Repository** to create an unrelated local repository with a selected initial branch. On an empty remote-backed Workspace, Fetch downloads refs only; the first Get Latest discovers the advertised default branch, creates its local tracking branch, and checks out the files. Get Latest refuses this first checkout if local files have already been added.
 
 Use **Tools > Git Settings** to select Git for Windows or the `git.exe` bundled with UGit. P4Git verifies the executable with `git --version` before saving it.
 

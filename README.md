@@ -8,7 +8,7 @@
 
 P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It keeps your existing GitLab, GitHub, or self-hosted Git server and presents daily work as clear changelists, file diffs, history, branches, and explicit sync operations.
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.8.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.18.0-0c8b87)
 
 ## Highlights
 
@@ -16,17 +16,17 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 |---|---|
 | P4V layout | Native menu, large action toolbar, Workspace tree, tabbed tables, details, Log, and status bar |
 | Depot | Browse the committed tree of an upstream, HEAD, local branch, or remote branch |
-| Workspace | Browse every local file with P4V-style sync, action, conflict, and LFS-lock badges |
+| Workspace | Browse every local file with P4V-style badges; repository-level metadata caching keeps folder expansion responsive |
 | Changelists | Create persistent local named changelists, move files in batches, and preserve each group's expanded/collapsed state |
 | Shelve | Store a changelist as a local Git stash and restore its file assignments on Unshelve |
 | Review | Read staged, unstaged, and untracked text diffs before changing the index |
 | History | Open a P4V-style History tab for any file or folder, inspect revisions, restore one, or diff it against Previous/HEAD |
 | Diff | Bundled MIT-licensed CodeMirror MergeView with full-file alignment, character highlights, search, folding, and difference navigation; Beyond Compare 5 remains supported |
 | Submit | P4V-strict delivery: Fetch, commit, Rebase/Resolve when needed, Push, and verify the exact server ref before reporting success |
-| Submitted | Browse path-linked commits; detail files compare against their previous revision or local Workspace |
-| Revision / Stream Graph | Render a multi-lane graph from real Git parent relationships, resize the branch pane, and find refs with fuzzy name filtering |
-| Selective branch merge | Inspect commit details and changed files, then apply selected commits into a new local Changelist without creating a Git commit |
-| Resolve | Resolve individual conflict blocks, edit the merged result, choose whole-file sides, or launch a configured external 3-way merge tool |
+| Submitted | Browse lazy-loaded path-linked commits; Change Details shows full paths, viewing/containing branches, and copyable title, description, and metadata |
+| Revision / Stream Graph | Select one or many commits and either apply all into a local Changelist or create real commits with Cherry-pick |
+| Selective branch merge | Apply every selected commit in ancestry order into a new local Changelist without creating a Git commit |
+| Resolve | Automatically use a configured external 3-way Merge tool for conflicts, recheck every result, and fall back to the built-in block/whole-file resolver |
 | Get Revision | Resolve a branch, tag, hash, or date, preview its commit/files, and restore one or more workspace targets |
 | Git LFS locks | Inspect, create, batch unlock, and force-unlock remote Git LFS locks |
 | Custom workspace | Drag pane dividers and file columns; select classic/light/dark themes, density, text size, and toolbar labels |
@@ -34,7 +34,7 @@ P4Git gives Git teams a workspace-oriented desktop workflow inspired by P4V. It 
 | GitLab | Store PATs with OS encryption, view merge requests, pipelines, and issues, and create MRs |
 | Navigation | Depot/Workspace-linked History and Submitted views, closable View-managed tabs, persistent per-tab filters, bookmarks, and sortable columns |
 | Tree location | Changelist files can reveal, expand, select, and scroll into view in Depot/Workspace; tree selection continuously scopes History/Submitted |
-| Multi-window | P4V-style Workspace chooser on launch, independent repository windows, and Open in New Window |
+| Workspaces | P4V-style chooser, independent repository windows, and New Workspace creation that records a server URL without Fetching or checking out files |
 | Secondary dialogs | Every modal secondary dialog can be dragged; double-click its title bar to re-center it |
 | Sync | Safe Get Latest with automatic fast-forward and explicit Merge/Rebase choice for diverged branches |
 | Push / Remotes | Manage remotes, select a target ref, and preview outgoing commits before Push |
@@ -55,7 +55,7 @@ The current binaries are not code-signed. Windows may show an **Unknown publishe
 
 1. Install P4Git or run the portable executable.
 2. Confirm that P4Git finds Git. If it does not, choose a Git for Windows or UGit `git.exe`.
-3. Open an existing Git workspace, or use **File > Clone Repository / Init Repository**.
+3. Open an existing Git workspace; use **Clone** to download immediately, **New Workspace** to configure a server while remaining empty until Get Latest, or **Init** for a new local repository.
 4. Open **Pending**. Create named changelists as needed, then drag files or use their context menu to organize the work.
 5. Right-click a changelist and choose **Submit Changelist**, or move files to **Ready to submit** and choose **Submit**.
 6. Use **Get Latest** and the **Connection** menu to pull, fetch, or push.

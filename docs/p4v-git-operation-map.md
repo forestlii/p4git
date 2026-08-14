@@ -26,16 +26,16 @@ P4Git follows the official Perforce documentation for [P4V concepts](https://hel
 | Time-lapse View | Per-line commit, author, and date through `git blame` | Implemented, simplified |
 | Revision Graph / Stream Graph | Multi-lane topology from commit parents, fuzzy ref filtering, a resizable branch pane, and Work in this Stream for local or remote branches | Implemented |
 | Select changes from another branch | Inspect commits/files, filter equivalent patches, then apply selected changes without committing into a new local Changelist; Resolve and Continue preserve the queue | Implemented; merge commits require a separate mainline workflow |
-| Resolve | Read Base/Ours/Theirs Git index stages, accept a side or edit a merge result, then Continue | Implemented |
+| Resolve | Read Base/Ours/Theirs Git index stages; automatically run and verify the configured three-way tool (including Beyond Compare Diff reuse), with built-in side/block editing fallback, then Continue | Implemented |
 | Pending changelist | Ready maps to the Git index; persistent repository-local named lists organize unstaged changes | Implemented locally |
 | Shelve / Unshelve | Store a changelist in a local Git stash with P4Git metadata and restore file assignments | Implemented locally |
 | Submit | Fetch, commit, safely Rebase/Resolve, Push, and verify the target server ref; rejected submissions remain visibly Local only and retryable | Implemented |
-| Submitted | Git log with expandable files, P4V-style commit details, previous/local file diffs, hash copy, and safe `git revert` | Implemented |
+| Submitted | Git log with expandable files, P4V-style details showing viewing/containing branches, copyable metadata/title/description, previous/local file diffs, and safe `git revert` | Implemented |
 | Jobs | GitLab Issues | Implemented when a GitLab project is configured |
 | File / folder History | Depot- and Workspace-selection-linked History and Submitted views, scoped to the selected ref/path without switching tabs | Implemented |
 | View filters | Multi-field Contains/Starts-with/Regex filters with case matching and validation | Implemented |
 | View-managed tabs | Closable main tabs restored through checked View-menu entries with persistent state | Implemented |
-| Workspaces | P4V-style startup chooser, recent local repositories, and independent multi-window opening | Implemented |
+| Workspaces | P4V-style chooser, recent repositories, independent windows, and empty remote-backed New Workspace creation with deferred Fetch/Get Latest | Implemented |
 | Native context menus | Object-specific actions for Workspace, Depot, Pending, Submitted, branches, and more; changelist files reveal in either tree | Implemented |
 | Draggable secondary dialogs | Drag any modal by its title bar and double-click to re-center | Implemented |
 | Log | Operation intent, success, and error output with a native Clear action | Implemented |
@@ -63,7 +63,7 @@ P4Git now applies the P4V-first placement policy: purely Git-native operations l
 - Merge, Rebase, Cherry-pick, and matching Abort operations.
 - Soft/Mixed/Hard Reset, lightweight Tags, and branch creation from a commit/ref.
 - File-level Stage, Unstage, and Stash; safe branch deletion; and per-Workspace Fetch/Pull/Push.
-- Clone/Init under File, plus GitLab merge-request creation and MR/Pipeline/Issue browsing.
+- New Workspace/Clone/Init under File, plus GitLab merge-request creation and MR/Pipeline/Issue browsing.
 - Remote management, Push commit previews, branch rename and Incoming/Outgoing comparison, and Amend.
 
 Still to be implemented:

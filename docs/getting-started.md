@@ -36,7 +36,7 @@ Code signing is planned for a later distribution setup. A signature proves publi
 
 ## Configure Git
 
-P4Git starts at a P4V-style Workspace chooser instead of automatically opening the last repository. Select a recent Workspace, double-click it, or browse for another repository. Use **File > New Workspace Window** to keep multiple repositories open independently.
+P4Git starts at a P4V-style Workspace chooser instead of automatically opening the last repository. Select a recent Workspace, double-click it, or browse for another repository. **New Workspace...** accepts a Git server URL and an empty local directory, initializes only local metadata and `origin`, and opens with no downloaded refs or checked-out files. Use **Fetch** later to inspect server refs without changing files, or **Get Latest** to discover the server default branch, establish upstream tracking, and populate the Workspace. Use **File > New Workspace Window** to keep multiple repositories open independently.
 
 At startup, P4Git checks:
 

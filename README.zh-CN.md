@@ -8,7 +8,7 @@
 
 P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要求迁移服务端，可以继续使用现有的 GitLab、GitHub 或自建 Git，通过清晰的变更列表、文件差异、历史、分支和同步操作完成日常版本管理。
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.8.0-0c8b87)
+![Windows](https://img.shields.io/badge/Windows-10%2B-1b5e9e) ![Git](https://img.shields.io/badge/Git-2.23%2B-f05032) ![Version](https://img.shields.io/badge/version-0.18.0-0c8b87)
 
 ## 核心能力
 
@@ -16,17 +16,17 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 |---|---|
 | P4V 布局 | 原生菜单、大图标操作栏、Workspace 树、页签表格、详情、Log 与状态栏 |
 | Depot | 浏览所选 upstream、HEAD、本地或远程分支的已提交文件树 |
-| 工作区 | 浏览全部本地文件，并显示 P4V 风格同步、操作、冲突和 LFS Lock 徽标 |
+| 工作区 | 浏览全部本地文件并显示 P4V 风格徽标；仓库级元数据缓存保证目录展开响应速度 |
 | 变更列表 | 创建本地命名 Changelist，批量归组文件，并记住每个列表的展开/折叠状态 |
 | Shelve | 把一个 Changelist 保存为本地 Git stash，并在 Unshelve 时恢复文件归组 |
 | 审阅 | 在修改索引前查看已暂存、未暂存和未跟踪文件的文本差异 |
 | History | 为文件或目录打开 P4V 风格 History 页签，查看版本、恢复指定版本，或与 Previous/HEAD 比较 |
 | Diff | 内置 MIT 开源 CodeMirror MergeView：完整文件双栏对齐、字符高亮、搜索、折叠及差异跳转；仍支持自动发现 Beyond Compare 5 |
 | 提交 | P4V 严格送达：Fetch、commit、必要时 Rebase/Resolve、Push，并验证服务器引用后才报告成功 |
-| Submitted | 按路径联动浏览提交；详情文件可与上一版本或本地 Workspace 比较 |
-| Revision / Stream Graph | 按真实 Git parent 关系显示多轨提交图；分支栏可拖动调宽，并支持按名称模糊筛选 |
-| 选择性分支合并 | 查看提交详情、文件状态和本地 Diff，再把选中提交应用到新建本地 Changelist，不自动创建 Git commit |
-| Resolve | 逐个冲突块选择 Ours/Theirs/Both、编辑结果、整文件选边，或启动已配置的外部三方合并工具 |
+| Submitted | 懒加载按路径联动的提交；Change Details 显示完整路径、查看来源/包含分支，并支持复制标题、描述和提交信息 |
+| Revision / Stream Graph | 支持单选或多选提交，并选择全部放入本地 Changelist 或使用 Cherry-pick 创建真实提交 |
+| 选择性分支合并 | 按祖先顺序把全部选中提交应用到新建本地 Changelist，不自动创建 Git commit |
+| Resolve | 冲突时自动使用已配置的外部三方 Merge 工具、逐文件复检结果，失败时回退内置逐块/整文件解决器 |
 | Get Revision | 输入分支、Tag、哈希或日期，预览目标提交和文件后恢复一个或多个工作区路径 |
 | Git LFS 锁 | 查看、创建、批量解锁和强制解锁远端 Git LFS Lock |
 | 个性化工作区 | 拖动面板分隔线和文件列；选择经典/浅色/深色主题、密度、字号及工具栏文字 |
@@ -34,7 +34,7 @@ P4Git 为 Git 团队提供一种接近 P4V 的工作区操作方式。它不要�
 | GitLab | 使用系统加密存储 PAT，查看 Merge Request、Pipeline 和 Issue，并创建 MR |
 | 导航 | Depot/Workspace 与 History/Submitted 联动、View 管理的可关闭页签、各页独立持久筛选、书签和可排序表头 |
 | 树定位 | Changelist 文件可定位到 Depot/Workspace 树并自动展开、选中和滚动；树选中持续驱动 History/Submitted |
-| 多窗口 | 启动时使用 P4V 风格 Workspace 选择器，各仓库窗口独立运行，并支持 Open in New Window |
+| Workspaces | P4V 风格选择器与独立多窗口；New Workspace 可只登记服务器 URL，不 Fetch、也不展开任何文件 |
 | 次级窗口 | 所有模态次级界面均可拖动，双击标题栏恢复居中 |
 | 同步 | 安全 Get Latest：可快进时自动更新，分叉时明确选择 Merge 或 Rebase |
 | Push / Remote | 管理 Remote，选择远端与目标分支，并在 Push 前预览提交 |
@@ -55,7 +55,7 @@ SHA-256 校验值会写入 [SHA256SUMS.txt](SHA256SUMS.txt)，并作为 Release 
 
 1. 安装 P4Git，或者直接运行便携版。
 2. 确认 P4Git 找到了 Git；如果没有，请选择 Git for Windows 或 UGit 使用的 `git.exe`。
-3. 打开已有 Git 工作区，或使用 **File > Clone Repository / Init Repository**。
+3. 打开已有 Git 工作区；需要立即下载时使用 **Clone**，只想登记服务器并保持空目录直到 Get Latest 时使用 **New Workspace**，全新本地仓库则使用 **Init**。
 4. 打开 **Pending**；按任务创建命名 Changelist，通过拖拽或文件右键菜单整理改动。
 5. 右键目标列表选择 **Submit Changelist**，或把文件移到 **Ready to submit** 后点击 **Submit**。
 6. 使用 **Get Latest** 和 **Connection** 菜单执行 Pull、Fetch 或 Push。

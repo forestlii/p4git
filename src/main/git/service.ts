@@ -26,6 +26,7 @@ import type {
   InitRequest,
   LfsLock,
   LfsStatus,
+  NewWorkspaceRequest,
   LocalChangelist,
   OperationState,
   PullResult,
@@ -33,6 +34,7 @@ import type {
   PushRequest,
   RemoteInfo,
   RepositorySummary,
+  RecentWorkspaceInfo,
   ReflogEntry,
   ResetMode,
   RevisionFile,
@@ -117,6 +119,47 @@ interface StrictSubmitSession {
   createdAt: string
 }
 
+interface WorkspacePathIndex {
+  trackedFiles: Set<string>
+  trackedDirectories: Set<string>
+  trackedChildren: Map<string, string[]>
+  unsyncedFiles: Set<string>
+  unsyncedDirectories: Set<string>
+}
+
+interface TimedPromise<T> {
+  expiresAt: number
+  value: Promise<T>
+}
+
+function normalizeGitPath(value: string): string {
+  return value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/$/, '')
+}
+
+function directoriesFor(paths: string[]): Set<string> {
+  const directories = new Set<string>()
+  for (const path of paths) {
+    let directory = dirname(path).replaceAll('\\', '/')
+    while (directory && directory !== '.') {
+      directories.add(directory)
+      const parent = dirname(directory).replaceAll('\\', '/')
+      if (parent === directory) break
+      directory = parent
+    }
+  }
+  return directories
+}
+
+function directChildrenFor(paths: string[]): Map<string, string[]> {
+  const children = new Map<string, string[]>()
+  for (const path of paths) {
+    const directory = dirname(path).replaceAll('\\', '/')
+    const key = directory === '.' ? '' : directory
+    children.set(key, [...(children.get(key) ?? []), path])
+  }
+  return children
+}
+
 async function canExecute(filePath: string): Promise<boolean> {
   try {
     await access(filePath)
@@ -130,6 +173,10 @@ async function canExecute(filePath: string): Promise<boolean> {
 export class GitService {
   private gitPath?: string
   private readonly activeProcesses = new Map<ChildProcess, string | undefined>()
+  private readonly repositoryRoots = new Map<string, string>()
+  private readonly workspacePathIndexes = new Map<string, TimedPromise<WorkspacePathIndex>>()
+  private readonly workspaceIgnoredEntries = new Map<string, Map<string, boolean>>()
+  private readonly localOnlyHashes = new Map<string, TimedPromise<Set<string> | undefined>>()
 
   constructor(private readonly settings: SettingsStore) {}
 
@@ -160,6 +207,19 @@ export class GitService {
     const root = await this.repositoryRoot(repoPath)
     await this.settings.rememberRepository(root)
     return this.summary(root)
+  }
+
+  async recentWorkspaces(paths: string[]): Promise<RecentWorkspaceInfo[]> {
+    return Promise.all(paths.map(async (repoPath) => {
+      try {
+        const root = await this.repositoryRoot(repoPath)
+        const branch = (await this.run(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => '')).trim()
+        const detached = branch || (await this.run(root, ['rev-parse', '--short', 'HEAD']).catch(() => '')).trim()
+        return { path: root, name: basename(root), branch: branch || (detached ? `detached@${detached}` : 'unborn'), available: true }
+      } catch (error) {
+        return { path: repoPath, name: basename(repoPath), available: false, error: asErrorMessage(error) }
+      }
+    }))
   }
 
   async summary(repoPath: string): Promise<RepositorySummary> {
@@ -224,7 +284,10 @@ export class GitService {
   async stage(repoPath: string, paths: string[]): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
     const safePaths = paths.map((item) => this.safeRelativePath(root, item))
-    if (safePaths.length) await this.run(root, ['add', '--', ...safePaths])
+    if (safePaths.length) {
+      await this.run(root, ['add', '--', ...safePaths])
+      this.invalidateRepositoryCaches(root)
+    }
   }
 
   async unstage(repoPath: string, paths: string[]): Promise<void> {
@@ -234,6 +297,7 @@ export class GitService {
       await this.run(root, ['restore', '--staged', '--', ...safePaths]).catch(() =>
         this.run(root, ['reset', '--', ...safePaths])
       )
+      this.invalidateRepositoryCaches(root)
     }
   }
 
@@ -250,6 +314,7 @@ export class GitService {
       const exists = await access(join(root, safePath)).then(() => true).catch(() => false)
       await this.run(root, exists ? ['rm', '--', safePath] : ['add', '-u', '--', safePath])
     }
+    this.invalidateRepositoryCaches(root)
   }
 
   async revert(repoPath: string, paths: string[]): Promise<void> {
@@ -268,6 +333,7 @@ export class GitService {
         await rm(join(root, safePath), { force: true })
       }
     }
+    this.invalidateRepositoryCaches(root)
   }
 
   async restoreFromRef(repoPath: string, ref: string, paths: string[]): Promise<void> {
@@ -477,13 +543,17 @@ export class GitService {
 
   async cherryPick(repoPath: string, ref: string): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
-    return this.run(root, ['cherry-pick', this.safeRef(ref)])
+    const output = await this.run(root, ['cherry-pick', this.safeRef(ref)])
+    this.invalidateRepositoryCaches(root)
+    return output
   }
 
   async cherryPickCommits(repoPath: string, refs: string[]): Promise<string> {
     const root = await this.repositoryRoot(repoPath)
     const ordered = await this.orderedCherryPickRefs(root, refs)
-    return this.run(root, ['cherry-pick', ...ordered])
+    const output = await this.run(root, ['cherry-pick', ...ordered])
+    this.invalidateRepositoryCaches(root)
+    return output
   }
 
   async selectiveMergeCommits(request: SelectiveMergeRequest): Promise<SelectiveMergeResult> {
@@ -588,7 +658,9 @@ export class GitService {
     const root = await this.repositoryRoot(repoPath)
     const trimmed = message.trim()
     if (!trimmed) throw new Error('提交说明不能为空。')
-    return this.run(root, ['commit', ...(amend ? ['--amend'] : []), '-m', trimmed])
+    const output = await this.run(root, ['commit', ...(amend ? ['--amend'] : []), '-m', trimmed])
+    this.invalidateRepositoryCaches(root)
+    return output
   }
 
   async strictSubmit(request: StrictSubmitRequest): Promise<StrictSubmitResult> {
@@ -605,6 +677,7 @@ export class GitService {
     const target = await this.strictSubmitTarget(root, branch)
     await this.run(root, ['fetch', target.remote, '--prune'])
     await this.run(root, ['commit', '-m', message])
+    this.invalidateRepositoryCaches(root)
     const commit = (await this.run(root, ['rev-parse', 'HEAD'])).trim()
     const session: StrictSubmitSession = {
       version: 1,
@@ -664,39 +737,62 @@ export class GitService {
     return warning
   }
 
-  async history(repoPath: string, limit = 100): Promise<CommitInfo[]> {
+  async history(repoPath: string, limit = 100, offset = 0, ref = 'HEAD', firstParent = false): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
-    if (!await this.hasHead(root)) return []
+    const safeRef = this.safeRef(ref)
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500)
+    const safeOffset = Math.max(Math.floor(offset), 0)
     const output = await this.run(root, [
       'log',
       `-${safeLimit}`,
+      `--skip=${safeOffset}`,
+      ...(firstParent ? ['--first-parent'] : []),
       '--date=iso-strict',
-      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e'
+      '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e',
+      safeRef
     ]).catch((error) => {
-      if (error instanceof Error && error.message.includes('does not have any commits')) return ''
+      if (error instanceof Error && (error.message.includes('does not have any commits') || (safeRef === 'HEAD' && error.message.includes("ambiguous argument 'HEAD'")))) return ''
       throw error
     })
     return this.markLocalOnly(root, parseLog(output))
   }
 
-  async fileHistory(repoPath: string, filePath: string, limit = 100, ref = 'HEAD'): Promise<CommitInfo[]> {
+  async fileHistory(repoPath: string, filePath: string, limit = 100, ref = 'HEAD', offset = 0): Promise<CommitInfo[]> {
     const root = await this.repositoryRoot(repoPath)
-    if (!await this.hasHead(root)) return []
+    const safeRef = this.safeRef(ref)
     const safePath = filePath === '.' || !filePath ? '.' : this.safeRelativePath(root, filePath)
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 500)
+    const safeOffset = Math.max(Math.floor(offset), 0)
     const formatArgs = [
       `-${safeLimit}`,
+      `--skip=${safeOffset}`,
       '--date=iso-strict',
       '--pretty=format:%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e',
-      this.safeRef(ref)
+      safeRef
     ]
-    const output = safePath === '.'
-      ? await this.run(root, ['log', ...formatArgs, '--', safePath])
-      : await this.run(root, ['log', '--follow', ...formatArgs, '--', safePath]).catch(() =>
+    const output = await (safePath === '.'
+      ? this.run(root, ['log', ...formatArgs, '--', safePath])
+      : this.run(root, ['log', '--follow', ...formatArgs, '--', safePath]).catch(() =>
           this.run(root, ['log', ...formatArgs, '--', safePath])
-        )
+        )).catch((error) => {
+      if (error instanceof Error && (error.message.includes('does not have any commits') || (safeRef === 'HEAD' && error.message.includes("ambiguous argument 'HEAD'")))) return ''
+      throw error
+    })
     return this.markLocalOnly(root, parseLog(output))
+  }
+
+  async getLatestPaths(repoPath: string, ref: string, paths: string[]): Promise<void> {
+    const root = await this.repositoryRoot(repoPath)
+    const safeRef = this.safeRef(ref)
+    const normalized = [...new Set(paths.map((path) => path === '.' || !path ? '.' : this.safeRelativePath(root, path)))]
+    if (!normalized.length) throw new Error('请选择至少一个文件或文件夹。')
+    const status = parsePorcelainV2(await this.run(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all']))
+    const overlaps = status.filter((change) => normalized.some((path) => path === '.' || change.path === path || change.path.startsWith(`${path}/`) || change.oldPath === path || change.oldPath?.startsWith(`${path}/`)))
+    if (overlaps.length) {
+      throw new Error(`所选范围包含 ${overlaps.length} 个本地变更，Get Latest 已停止以避免覆盖：\n${overlaps.slice(0, 12).map((change) => change.path).join('\n')}${overlaps.length > 12 ? '\n…' : ''}`)
+    }
+    if (safeRef === 'HEAD' && !await this.hasHead(root)) return
+    await this.run(root, ['restore', `--source=${safeRef}`, '--worktree', '--', ...normalized])
   }
 
   async fileRevisionDiff(repoPath: string, filePath: string, ref: string, compareRef?: string): Promise<string> {
@@ -794,15 +890,30 @@ export class GitService {
     return parseRevisionFiles(output)
   }
 
-  async commitDetails(repoPath: string, hash: string): Promise<CommitDetails> {
+  async commitDetails(repoPath: string, hash: string, sourceBranch?: string): Promise<CommitDetails> {
     const root = await this.repositoryRoot(repoPath)
     const safeHash = this.safeRef(hash)
-    const output = await this.run(root, [
-      'show', '-s', '--date=iso-strict',
-      '--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%D%x00%P%x00%B',
-      safeHash
+    const [output, branchOutput, currentBranch, files] = await Promise.all([
+      this.run(root, [
+        'show', '-s', '--date=iso-strict',
+        '--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%D%x00%P%x00%B',
+        safeHash
+      ]),
+      this.run(root, ['for-each-ref', '--format=%(refname:short)', '--contains', safeHash, 'refs/heads', 'refs/remotes']),
+      this.run(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then((value) => value.trim()).catch(() => ''),
+      this.commitFiles(root, safeHash)
     ])
     const [fullHash, shortHash, author, email, date, subject, decoration = '', parents = '', message = ''] = output.split('\0')
+    const preferredBranch = (sourceBranch?.trim() || currentBranch).replace(/^refs\/(?:heads|remotes)\//, '')
+    const branches = [...new Set(branchOutput.split(/\r?\n/).map((branch) => branch.trim()).filter((branch) => branch && !branch.endsWith('/HEAD')))]
+      .sort((left, right) => {
+        if (left === preferredBranch) return -1
+        if (right === preferredBranch) return 1
+        const leftRemote = left.includes('/')
+        const rightRemote = right.includes('/')
+        if (leftRemote !== rightRemote) return leftRemote ? 1 : -1
+        return left.localeCompare(right, undefined, { sensitivity: 'base' })
+      })
     return {
       hash: fullHash,
       shortHash,
@@ -813,7 +924,9 @@ export class GitService {
       refs: decoration.split(',').map((ref) => ref.trim()).filter(Boolean),
       parents: parents.split(/\s+/).filter(Boolean),
       message: message.trim(),
-      files: await this.commitFiles(root, fullHash)
+      branches,
+      sourceBranch: preferredBranch || undefined,
+      files
     }
   }
 
@@ -877,7 +990,10 @@ export class GitService {
 
   async launchExternalMerge(repoPath: string, filePath: string): Promise<boolean> {
     const configured = await this.settings.get()
-    const executable = configured.mergeToolPath?.trim()
+    const configuredMerge = configured.mergeToolPath?.trim()
+    const configuredDiff = configured.diffToolPath?.trim()
+    const diffToolSupportsMerge = Boolean(configuredDiff && /^(?:bcompare|bcomp)(?:\.exe)?$/i.test(basename(configuredDiff)))
+    const executable = configuredMerge || (diffToolSupportsMerge ? configuredDiff : undefined)
     if (!executable) return false
     if (!isAbsolute(executable)) throw new Error('外部 Merge 工具路径必须是绝对路径。')
     await access(executable).catch(() => { throw new Error(`找不到外部 Merge 工具：${executable}`) })
@@ -886,21 +1002,34 @@ export class GitService {
     const temporary = await mkdtemp(join(tmpdir(), 'p4git-merge-'))
     const fileName = basename(safePath)
     const paths = { base: join(temporary, `base-${fileName}`), ours: join(temporary, `ours-${fileName}`), theirs: join(temporary, `theirs-${fileName}`), result: join(root, safePath) }
-    await Promise.all([1, 2, 3].map(async (stage, index) => {
-      const target = [paths.base, paths.ours, paths.theirs][index]
-      await writeFile(target, await this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0)))
-      await chmod(target, 0o444).catch(() => undefined)
-    }))
-    const args = expandMergeToolArguments(configured.mergeToolArguments?.trim() || DEFAULT_MERGE_TOOL_ARGUMENTS, paths)
-    await new Promise<void>((resolveLaunch, rejectLaunch) => {
-      const child = spawn(executable, args, { cwd: root, windowsHide: false, stdio: 'ignore' })
-      this.activeProcesses.set(child, root)
-      child.once('error', (error) => { this.activeProcesses.delete(child); rejectLaunch(new Error(`无法启动外部 Merge 工具：${error.message}`)) })
-      child.once('close', (code) => { this.activeProcesses.delete(child); code === 0 ? resolveLaunch() : rejectLaunch(new Error(`外部 Merge 工具退出，代码 ${code ?? 'unknown'}。`)) })
-    })
-    await this.run(root, ['add', '--', safePath])
-    await rm(temporary, { recursive: true, force: true }).catch(() => undefined)
-    return true
+    try {
+      await Promise.all([1, 2, 3].map(async (stage, index) => {
+        const target = [paths.base, paths.ours, paths.theirs][index]
+        await writeFile(target, await this.runBuffer(root, ['show', `:${stage}:${safePath}`]).catch(() => Buffer.alloc(0)))
+        await chmod(target, 0o444).catch(() => undefined)
+      }))
+      const argumentsTemplate = configuredMerge
+        ? configured.mergeToolArguments?.trim() || DEFAULT_MERGE_TOOL_ARGUMENTS
+        : DEFAULT_MERGE_TOOL_ARGUMENTS
+      const args = expandMergeToolArguments(argumentsTemplate, paths)
+      await new Promise<void>((resolveLaunch, rejectLaunch) => {
+        const child = spawn(executable, args, { cwd: root, windowsHide: false, stdio: 'ignore' })
+        this.activeProcesses.set(child, root)
+        child.once('error', (error) => { this.activeProcesses.delete(child); rejectLaunch(new Error(`无法启动外部 Merge 工具：${error.message}`)) })
+        child.once('close', (code) => { this.activeProcesses.delete(child); code === 0 ? resolveLaunch() : rejectLaunch(new Error(`外部 Merge 工具退出，代码 ${code ?? 'unknown'}。`)) })
+      })
+      const result = await readFile(paths.result).catch(() => { throw new Error(`外部 Merge 工具没有生成结果文件：${safePath}`) })
+      if (!result.includes(0)) {
+        const text = result.toString('utf8')
+        if (/^<<<<<<<(?:\s|$)/m.test(text) && /^>>>>>>>(?:\s|$)/m.test(text)) {
+          throw new Error(`外部 Merge 工具退出后 ${safePath} 仍包含冲突标记。`)
+        }
+      }
+      await this.run(root, ['add', '--', safePath])
+      return true
+    } finally {
+      await rm(temporary, { recursive: true, force: true }).catch(() => undefined)
+    }
   }
 
   async continueOperation(repoPath: string): Promise<string> {
@@ -928,7 +1057,11 @@ export class GitService {
       }
       return output
     }
-    if (await gitPath('CHERRY_PICK_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'cherry-pick', '--continue'])
+    if (await gitPath('CHERRY_PICK_HEAD')) {
+      const output = await this.run(root, ['-c', 'core.editor=true', 'cherry-pick', '--continue'])
+      this.invalidateRepositoryCaches(root)
+      return output
+    }
     if (await gitPath('REVERT_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'revert', '--continue'])
     if (await gitPath('MERGE_HEAD')) return this.run(root, ['-c', 'core.editor=true', 'merge', '--continue'])
     throw new Error('当前没有可继续的 Merge、Rebase 或 Cherry-pick。')
@@ -961,40 +1094,32 @@ export class GitService {
       throw new Error('目录不在当前仓库中。')
     }
 
-    const entries = await readdir(requested, { withFileTypes: true })
-    const treeish = fromRoot ? `HEAD:${fromRoot.replaceAll('\\', '/')}` : 'HEAD'
-    const [committedOutput, stagedOutput, unsyncedOutput, deletedOutput] = await Promise.all([
-      this.run(root, ['ls-tree', '-z', treeish]).catch(() => ''),
-      this.run(root, ['diff', '--cached', '--name-only', '-z', '--', fromRoot || '.']).catch(() => ''),
-      this.run(root, ['diff', '--name-only', '-z', 'HEAD...@{upstream}', '--', fromRoot || '.']).catch(() => ''),
-      this.run(root, ['diff', '--name-only', '--diff-filter=D', '-z', 'HEAD', '--', fromRoot || '.']).catch(() => '')
+    const [entries, index] = await Promise.all([
+      readdir(requested, { withFileTypes: true }),
+      this.workspacePathIndex(root)
     ])
-    const committedNames = new Set(committedOutput
-      .split('\0')
-      .filter(Boolean)
-      .map((line) => line.slice(line.indexOf('\t') + 1)))
-    const stagedPaths = stagedOutput.split('\0').filter(Boolean)
-    const unsyncedPaths = unsyncedOutput.split('\0').filter(Boolean)
+    const normalizedFromRoot = fromRoot.replaceAll('\\', '/')
+    const diskPaths = entries
+      .filter((entry) => entry.name !== '.git' && (entry.isDirectory() || entry.isFile()))
+      .map((entry) => join(fromRoot, entry.name).replaceAll('\\', '/'))
+    const ignoredEntries = await this.ignoredWorkspaceEntries(root, diskPaths.filter((path) => !index.trackedFiles.has(path) && !index.trackedDirectories.has(path)))
     const diskEntries: WorkspaceEntry[] = entries
       .filter((entry) => entry.name !== '.git' && (entry.isDirectory() || entry.isFile()))
-      .map((entry) => ({
-        name: entry.name,
-        path: join(fromRoot, entry.name).replaceAll('\\', '/'),
-        isDirectory: entry.isDirectory(),
-        tracked: committedNames.has(entry.name) || (entry.isDirectory()
-          ? stagedPaths.some((path) => path.startsWith(`${join(fromRoot, entry.name).replaceAll('\\', '/')}/`))
-          : stagedPaths.includes(join(fromRoot, entry.name).replaceAll('\\', '/'))),
-        unsynced: entry.isDirectory()
-          ? unsyncedPaths.some((path) => path.startsWith(`${join(fromRoot, entry.name).replaceAll('\\', '/')}/`))
-          : unsyncedPaths.includes(join(fromRoot, entry.name).replaceAll('\\', '/'))
-      }))
+      .map((entry) => {
+        const path = join(fromRoot, entry.name).replaceAll('\\', '/')
+        return {
+          name: entry.name,
+          path,
+          isDirectory: entry.isDirectory(),
+          tracked: entry.isDirectory() ? index.trackedDirectories.has(path) : index.trackedFiles.has(path),
+          ignored: ignoredEntries.has(path),
+          unsynced: entry.isDirectory() ? index.unsyncedDirectories.has(path) : index.unsyncedFiles.has(path)
+        }
+      })
     const present = new Set(diskEntries.map((entry) => entry.path))
-    const deletedEntries: WorkspaceEntry[] = deletedOutput.split('\0').filter(Boolean).flatMap((path) => {
-      const normalizedPath = path.replaceAll('\\', '/')
-      const directory = dirname(normalizedPath).replaceAll('\\', '/')
-      if ((directory === '.' ? '' : directory) !== fromRoot.replaceAll('\\', '/') || present.has(normalizedPath)) return []
-      return [{ name: basename(normalizedPath), path: normalizedPath, isDirectory: false, tracked: true }]
-    })
+    const deletedEntries: WorkspaceEntry[] = (index.trackedChildren.get(normalizedFromRoot) ?? [])
+      .filter((path) => !present.has(path))
+      .map((path) => ({ name: basename(path), path, isDirectory: false, tracked: true }))
     return [...diskEntries, ...deletedEntries]
       .sort((left, right) => {
         if (left.isDirectory !== right.isDirectory) return left.isDirectory ? -1 : 1
@@ -1046,16 +1171,48 @@ export class GitService {
       args.push(source)
     }
     await this.run(root, args)
+    this.invalidateRepositoryCaches(root)
   }
 
   async fetch(repoPath: string): Promise<void> {
     const root = await this.repositoryRoot(repoPath)
     await this.run(root, ['fetch', '--all', '--prune'])
+    this.invalidateRepositoryCaches(root)
   }
 
   async pull(repoPath: string): Promise<PullResult> {
     const root = await this.repositoryRoot(repoPath)
     await this.run(root, ['fetch', '--all', '--prune'])
+    this.invalidateRepositoryCaches(root)
+    if (!await this.hasHead(root)) {
+      const status = await this.run(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all'])
+      if (status) throw new Error('空 Workspace 中已有本地文件。首次 Get Latest 已停止，避免覆盖这些文件。请先移动或提交本地文件。')
+      const remotes = (await this.run(root, ['remote'])).split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+      const remote = remotes.includes('origin') ? 'origin' : remotes.length === 1 ? remotes[0] : ''
+      if (!remote) throw new Error(remotes.length ? '仓库有多个 Remote，无法自动确定首次 Get Latest 的来源。' : '仓库没有 Remote，无法执行首次 Get Latest。')
+      const advertised = await this.run(root, ['ls-remote', '--symref', remote, 'HEAD']).catch(() => '')
+      const advertisedBranch = advertised.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m)?.[1]
+      const remoteBranches = (await this.run(root, ['for-each-ref', '--format=%(refname:short)', `refs/remotes/${remote}`]))
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter((item) => item && item !== `${remote}/HEAD`)
+      const currentBranch = (await this.run(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => '')).trim()
+      const candidates = [
+        advertisedBranch ? `${remote}/${advertisedBranch}` : '',
+        currentBranch ? `${remote}/${currentBranch}` : '',
+        `${remote}/main`,
+        `${remote}/master`,
+        remoteBranches.length === 1 ? remoteBranches[0] : ''
+      ].filter(Boolean)
+      const upstream = candidates.find((candidate) => remoteBranches.includes(candidate))
+      if (!upstream) throw new Error('已 Fetch 远端引用，但无法确定服务器默认分支。请在 Stream Graph 选择远程分支并使用 Work in this Stream。')
+      const branch = this.safeRef(upstream.slice(remote.length + 1))
+      await this.run(root, ['remote', 'set-head', remote, branch]).catch(() => undefined)
+      await this.run(root, ['switch', '--force-create', branch, '--track', upstream])
+      const behind = Number((await this.run(root, ['rev-list', '--count', upstream])).trim())
+      this.invalidateRepositoryCaches(root)
+      return { outcome: 'fast-forwarded', upstream, ahead: 0, behind: Number.isSafeInteger(behind) ? behind : 0 }
+    }
     const upstream = (await this.run(root, [
       'rev-parse',
       '--abbrev-ref',
@@ -1091,10 +1248,12 @@ export class GitService {
     ]).catch(() => '')
     if (upstream.trim()) {
       await this.run(root, ['push'])
+      this.invalidateRepositoryCaches(root)
       return
     }
     const branch = (await this.run(root, ['symbolic-ref', '--short', 'HEAD'])).trim()
     await this.run(root, ['push', '--set-upstream', 'origin', branch])
+    this.invalidateRepositoryCaches(root)
   }
 
   async remotes(repoPath: string): Promise<RemoteInfo[]> {
@@ -1179,6 +1338,24 @@ export class GitService {
       }
     }
     return processes.length
+  }
+
+  async createRemoteWorkspace(request: NewWorkspaceRequest): Promise<string> {
+    const requestedDirectory = request.directory.trim()
+    if (!requestedDirectory || !isAbsolute(requestedDirectory)) throw new Error('Workspace 本地路径必须是绝对路径。')
+    const directory = normalize(resolve(requestedDirectory))
+    const url = this.safeRemoteUrl(request.url)
+    const existing = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return []
+      throw error
+    })
+    if (existing.length) throw new Error('New Workspace 的本地目录必须为空，避免覆盖已有文件。请选择或创建一个空目录。')
+    await mkdir(directory, { recursive: true })
+    const gitPath = await this.resolveGitPath()
+    await this.runRaw(gitPath, ['init', '-b', 'main', directory], directory)
+    await this.run(directory, ['remote', 'add', 'origin', url])
+    await this.settings.rememberRepository(directory)
+    return directory
   }
 
   async cloneRepository(request: CloneRequest): Promise<string> {
@@ -1280,10 +1457,75 @@ export class GitService {
   }
 
   private async markLocalOnly(root: string, commits: CommitInfo[]): Promise<CommitInfo[]> {
-    const upstream = (await this.run(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => '')).trim()
-    if (!upstream) return commits.map((commit) => ({ ...commit, localOnly: true }))
-    const localHashes = new Set((await this.run(root, ['rev-list', 'HEAD', `^${upstream}`]).catch(() => '')).split(/\r?\n/).filter(Boolean))
+    const localHashes = await this.localOnlyHashSet(root)
+    if (!localHashes) return commits.map((commit) => ({ ...commit, localOnly: true }))
     return commits.map((commit) => ({ ...commit, localOnly: localHashes.has(commit.hash) }))
+  }
+
+  private repositoryCacheKey(root: string): string {
+    return normalize(resolve(root)).toLowerCase()
+  }
+
+  private invalidateRepositoryCaches(root: string): void {
+    const key = this.repositoryCacheKey(root)
+    this.workspacePathIndexes.delete(key)
+    this.workspaceIgnoredEntries.delete(key)
+    this.localOnlyHashes.delete(key)
+  }
+
+  private async workspacePathIndex(root: string): Promise<WorkspacePathIndex> {
+    const key = this.repositoryCacheKey(root)
+    const cached = this.workspacePathIndexes.get(key)
+    if (cached && cached.expiresAt > Date.now()) return cached.value
+    const value = Promise.all([
+      this.run(root, ['ls-files', '--cached', '-z']).catch(() => ''),
+      this.run(root, ['diff', '--name-only', '-z', 'HEAD...@{upstream}']).catch(() => '')
+    ]).then(([trackedOutput, unsyncedOutput]) => {
+      const trackedPaths = trackedOutput.split('\0').filter(Boolean).map(normalizeGitPath)
+      const unsyncedPaths = unsyncedOutput.split('\0').filter(Boolean).map(normalizeGitPath)
+      return {
+        trackedFiles: new Set(trackedPaths),
+        trackedDirectories: directoriesFor(trackedPaths),
+        trackedChildren: directChildrenFor(trackedPaths),
+        unsyncedFiles: new Set(unsyncedPaths),
+        unsyncedDirectories: directoriesFor(unsyncedPaths)
+      }
+    })
+    this.workspacePathIndexes.set(key, { expiresAt: Date.now() + 60_000, value })
+    void value.catch(() => {
+      if (this.workspacePathIndexes.get(key)?.value === value) this.workspacePathIndexes.delete(key)
+    })
+    return value
+  }
+
+  private async ignoredWorkspaceEntries(root: string, paths: string[]): Promise<Set<string>> {
+    if (!paths.length) return new Set()
+    const key = this.repositoryCacheKey(root)
+    const cached = this.workspaceIgnoredEntries.get(key) ?? new Map<string, boolean>()
+    this.workspaceIgnoredEntries.set(key, cached)
+    const unknown = paths.filter((path) => !cached.has(path))
+    if (unknown.length) {
+      const output = await this.runWithInput(root, ['check-ignore', '--stdin', '-z'], `${unknown.join('\0')}\0`).catch(() => '')
+      const ignored = new Set(output.split('\0').filter(Boolean).map(normalizeGitPath))
+      for (const path of unknown) cached.set(path, ignored.has(path))
+    }
+    return new Set(paths.filter((path) => cached.get(path)))
+  }
+
+  private async localOnlyHashSet(root: string): Promise<Set<string> | undefined> {
+    const key = this.repositoryCacheKey(root)
+    const cached = this.localOnlyHashes.get(key)
+    if (cached && cached.expiresAt > Date.now()) return cached.value
+    const value = (async () => {
+      const upstream = (await this.run(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => '')).trim()
+      if (!upstream) return undefined
+      return new Set((await this.run(root, ['rev-list', 'HEAD', `^${upstream}`]).catch(() => '')).split(/\r?\n/).filter(Boolean))
+    })()
+    this.localOnlyHashes.set(key, { expiresAt: Date.now() + 5_000, value })
+    void value.catch(() => {
+      if (this.localOnlyHashes.get(key)?.value === value) this.localOnlyHashes.delete(key)
+    })
+    return value
   }
 
   private async restoreStrictSubmitWorkspace(root: string, session: StrictSubmitSession): Promise<string | undefined> {
@@ -1330,8 +1572,13 @@ export class GitService {
 
   private async repositoryRoot(repoPath: string): Promise<string> {
     if (!repoPath || !isAbsolute(repoPath)) throw new Error('仓库路径必须是绝对路径。')
-    const root = (await this.run(resolve(repoPath), ['rev-parse', '--show-toplevel'])).trim()
-    return normalize(root)
+    const candidate = normalize(resolve(repoPath))
+    const cached = this.repositoryRoots.get(candidate.toLowerCase())
+    if (cached) return cached
+    const root = normalize((await this.run(candidate, ['rev-parse', '--show-toplevel'])).trim())
+    this.repositoryRoots.set(candidate.toLowerCase(), root)
+    this.repositoryRoots.set(root.toLowerCase(), root)
+    return root
   }
 
   private async hasHead(root: string): Promise<boolean> {
@@ -1380,7 +1627,7 @@ export class GitService {
   private async orderedCherryPickRefs(root: string, refs: string[]): Promise<string[]> {
     const safeRefs = [...new Set(refs.map((ref) => this.safeRef(ref)))]
     if (!safeRefs.length) throw new Error('请选择至少一个要合并的提交。')
-    const commits: Array<{ hash: string; parents: string[] }> = []
+    const commits: Array<{ hash: string; parents: string[]; generation: number }> = []
     for (const ref of safeRefs) {
       const hash = (await this.run(root, ['rev-parse', '--verify', `${ref}^{commit}`]).catch(() => { throw new Error(`找不到提交：${ref}`) })).trim()
       const contained = await this.run(root, ['merge-base', '--is-ancestor', hash, 'HEAD']).then(() => true).catch(() => false)
@@ -1388,14 +1635,19 @@ export class GitService {
         .then((output) => output.split(/\r?\n/).some((line) => line === `- ${hash}`))
         .catch(() => false)
       if (equivalent) throw new Error(`提交 ${ref.slice(0, 10)} 已经包含在当前分支中，无需再次合并。请刷新 Compare with Current 列表。`)
-      const parents = (await this.run(root, ['show', '-s', '--format=%P', hash])).trim().split(/\s+/).filter(Boolean)
+      const [parentsOutput, generationOutput] = await Promise.all([
+        this.run(root, ['show', '-s', '--format=%P', hash]),
+        this.run(root, ['rev-list', '--count', hash])
+      ])
+      const parents = parentsOutput.trim().split(/\s+/).filter(Boolean)
       if (parents.length > 1) throw new Error(`提交 ${ref.slice(0, 10)} 是 Merge commit，选择性合并需要指定 mainline，当前版本暂不支持。`)
-      commits.push({ hash, parents })
+      const generation = Number(generationOutput.trim())
+      commits.push({ hash, parents, generation: Number.isSafeInteger(generation) ? generation : 0 })
     }
     const selected = new Map(commits.map((commit) => [commit.hash, commit]))
     const ordered: string[] = []
     const visited = new Set<string>()
-    const visit = (commit: { hash: string; parents: string[] }): void => {
+    const visit = (commit: { hash: string; parents: string[]; generation: number }): void => {
       if (visited.has(commit.hash)) return
       visited.add(commit.hash)
       for (const parent of commit.parents) {
@@ -1404,7 +1656,7 @@ export class GitService {
       }
       ordered.push(commit.hash)
     }
-    for (const commit of commits) visit(commit)
+    for (const commit of [...commits].sort((left, right) => left.generation - right.generation)) visit(commit)
     return ordered
   }
 
@@ -1595,6 +1847,29 @@ export class GitService {
         rejectOutput(new Error(detail))
       })
       this.activeProcesses.set(child, cwd)
+    })
+  }
+
+  private async runWithInput(cwd: string, args: string[], input: string): Promise<string> {
+    const gitPath = await this.resolveGitPath()
+    return new Promise<string>((resolveOutput, rejectOutput) => {
+      const child = execFile(gitPath, ['-c', 'core.quotepath=false', ...args], {
+        cwd,
+        encoding: 'utf8',
+        windowsHide: true,
+        maxBuffer,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+      }, (error, stdout, stderr) => {
+        this.activeProcesses.delete(child)
+        if (!error) {
+          resolveOutput(stdout)
+          return
+        }
+        const detail = stderr?.trim() || stdout?.trim() || error.message
+        rejectOutput(new Error(detail))
+      })
+      this.activeProcesses.set(child, cwd)
+      child.stdin?.end(input)
     })
   }
 
